@@ -163,14 +163,15 @@ editing generated output.
 ## 6. typegen verified on a p4c v1model p4info
 
 `p4c` is not installed on the dev machine, so the fixture
-`src/main/scala/examples/quackmpp_exchange.p4info.json` was written by hand in the
+`src/test/resources/quackmpp_exchange.p4info.json` was written by hand in the
 exact JSON shape `p4c --target bmv2 --arch v1model --p4runtime-files` emits
 (protobuf JSON mapping: `pkgInfo.arch: "v1model"`, `matchFields[].matchType: "EXACT"`,
 p4c-style type-prefixed ids). It declares table `QuackMPP.exchange` with an
 exact match on `meta.quack.bucket` and actions `set_worker(worker_id, port)`,
 `drop`, `NoAction`.
 
-`typegen` emits (committed as `quackmpp_exchange.scala`, and it compiles):
+`typegen` emits (committed as `src/test/scala/quackmpp_exchange.scala`, and it
+compiles):
 
 ```scala
 type TableMatchFields[TN] =
@@ -233,31 +234,50 @@ Rationale:
 cd P4R-Type && sbt -batch publishLocal
 ```
 
-publishes to `~/.ivy2/local`. Current coordinates (from `build.sbt`):
+Verified — this publishes to `~/.ivy2/local`:
 
 ```
-organization : (unset — defaults to "p4rt-scala")
-name         : p4rt-scala
-version      : 0.1.0-SNAPSHOT
-scala        : 3.8.4  ->  p4rt-scala_3
+io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT
+  -> ~/.ivy2/local/io.github.oluies/p4rt-scala_3/0.1.0-SNAPSHOT/jars/p4rt-scala_3.jar
 ```
 
-⚠️ **`organization` is not set in `build.sbt`.** Before QuackMPP depends on this,
-set a real one (e.g. `organization := "io.github.oluies"`), because
-`"p4rt-scala" %% "p4rt-scala" % "0.1.0-SNAPSHOT"` is not a coordinate anyone should
-publish. Mill then depends on it via:
+`organization := "io.github.oluies"` is now set. Without it sbt derived the groupId
+from the project name and published the meaningless `p4rt-scala %% p4rt-scala`.
+(The groupId assumes eventual Maven Central publication under the `github.com/oluies`
+namespace; change it before any real release if that is not the plan.)
+
+The published jar was inspected rather than assumed — ScalaPB writes into
+`sourceManaged`, so it is worth confirming generated classes are actually packaged:
+
+| contents | count |
+| --- | --- |
+| `p4rtype/*` (the hand-written API) | 29 |
+| `p4/v1/p4runtime/*` (generated) | 417 |
+| `p4/config/v1/p4info/*` (generated) | 175 |
+
+Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"..."`,
+so QuackMPP depends on it via:
 
 ```scala
-def ivyDeps = Agg(ivy"io.github.oluies::p4rt-scala:0.1.0-SNAPSHOT")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0-SNAPSHOT")
 ```
 
-with `~/.ivy2/local` resolved (Mill resolves it by default for local Ivy).
+On the resolver question: Mill resolves through coursier, and coursier's documented
+defaults are "the Ivy2 local repository, `~/.ivy2/local`, [and] Maven Central" — so
+**no custom `repositories` task should be needed**. Mill's own docs do not state this
+explicitly, and it could not be tested here (neither Mill nor the coursier CLI is
+installed on this machine), so confirm it on the QuackMPP side; if resolution fails,
+adding `~/.ivy2/local` to Mill's `repositories` is the fix.
 
 **Generated types are per-p4info and belong to the consumer.** `typegen` writes
 Scala to stdout; QuackMPP should run it as a build step against its own p4info and
 compile the output into its own module, rather than expecting P4R-Type to ship
 QuackMPP's types. The `quackmpp_exchange.*` files here are a *fixture proving the
-mechanism*, not the artifact QuackMPP should import.
+mechanism*, not the artifact QuackMPP should import — which is why they live under
+`src/test/` (`src/test/scala/quackmpp_exchange.scala`,
+`src/test/resources/quackmpp_exchange.p4info.json`). Putting the fixture in
+`src/main/` shipped `quackmpp/Chan` inside the published library; the jar is now
+verified free of `quackmpp/` entries.
 
 ## 8. Blockers / friction for QuackMPP spec 003
 
@@ -265,7 +285,9 @@ mechanism*, not the artifact QuackMPP should import.
    alpha.6 + a json4s eviction override. If QuackMPP wants a boring dependency,
    drop to sbt 1.12.13 — everything is stable there and the library API is
    unchanged either way.
-2. **`organization` is unset (§7).** Blocks publishing a sane coordinate.
+2. ~~**`organization` is unset (§7).**~~ Fixed: `organization := "io.github.oluies"`,
+   `publishLocal` verified to produce `io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT`
+   in `~/.ivy2/local` with all generated classes packaged (§7).
 3. **Protos are behind v1.5.0 (§5).** Additive-only so far, but bmv2 feature work
    (e.g. platform properties) will want the refresh.
 4. **There is no real test suite upstream.** The inherited suite was the sbt

@@ -8,6 +8,10 @@ val munitVersion  = "1.3.4"
 lazy val root = project
   .in(file("."))
   .settings(
+    // Without an explicit organization, sbt derives the groupId from the project
+    // name, producing the meaningless coordinate `p4rt-scala %% p4rt-scala`.
+    // Downstream consumers (QuackMPP's Mill build) need a real one.
+    organization := "io.github.oluies",
     name         := "p4rt-scala",
     version      := "0.1.0-SNAPSHOT",
     scalaVersion := scala3Version,
