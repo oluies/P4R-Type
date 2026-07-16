@@ -1,6 +1,12 @@
 Copyright (C) 2023 Technical University of Denmark
+Copyright (C) 2026 Örjan Lundberg
 
 Authors: Jens Kanstrup Larsen <jekla@dtu.dk>, Alceste Scalas <alcsc@dtu.dk>
+
+This is a fork of https://github.com/JensKanstrupLarsen/P4R-Type. Modifications
+in this fork are copyright Örjan Lundberg <orjan@lundberg.me> and are released
+under the same terms below. The original copyright notice above is retained as
+those terms require.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
