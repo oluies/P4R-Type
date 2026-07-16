@@ -14,7 +14,11 @@ lazy val root = project
 
     // scalapb-json4s only publishes 1.0.0-alpha.1 on the 1.0 line and pins
     // scalapb-runtime 1.0.0-alpha.1, while sbt 2 forces scalapb >= 1.0.0-alpha.5.
-    evictionErrorLevel := Level.Warn,
+    // Scoped to that one artifact on purpose: a blanket `evictionErrorLevel :=
+    // Level.Warn` would also silence every future binary-incompatible eviction
+    // (grpc, zio, protobuf-java) that Scala Steward bumps into the build.
+    libraryDependencySchemes +=
+      "com.thesamet.scalapb" %% "scalapb-runtime" % VersionScheme.Always,
 
     // Silence warnings due to ScalaPB-generated code
     scalacOptions ++= Seq(

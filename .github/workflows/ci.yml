@@ -43,11 +43,27 @@ jobs:
       - name: Compile and test
         run: sbt -batch "compile; Test/compile; testFull"
 
+      # Run typegen into a log first and check its exit status, rather than
+      # piping it straight into sed: otherwise a genuine failure (compile error,
+      # missing fixture, parseP4info throwing) produces no 'package quackmpp'
+      # line, and the drift check reports it as "drift" while discarding the
+      # actual error.
       - name: Verify typegen against the v1model p4info fixture
         run: |
-          sbt -batch "runMain parseP4info src/main/scala/examples/quackmpp_exchange.p4info.json quackmpp" 2>/dev/null \
-            | sed -n '/^package quackmpp/,$p' | sed '/^\[success\]/,$d' | sed '/^\[info\]/d' > /tmp/regenerated.scala
-          if ! diff -u src/main/scala/examples/quackmpp_exchange.scala /tmp/regenerated.scala; then
+          set -euo pipefail
+          if ! sbt -batch "runMain parseP4info src/main/scala/examples/quackmpp_exchange.p4info.json quackmpp" \
+               > typegen.log 2>&1; then
+            echo "::error::typegen failed to run. Output follows:"
+            cat typegen.log
+            exit 1
+          fi
+          sed -n '/^package quackmpp/,$p' typegen.log | sed '/^\[success\]/,$d' | sed '/^\[info\]/d' > regenerated.scala
+          if [ ! -s regenerated.scala ]; then
+            echo "::error::typegen produced no output. Full log:"
+            cat typegen.log
+            exit 1
+          fi
+          if ! diff -u src/main/scala/examples/quackmpp_exchange.scala regenerated.scala; then
             echo "::error::typegen output drifted from the committed quackmpp_exchange.scala. Regenerate it."
             exit 1
           fi

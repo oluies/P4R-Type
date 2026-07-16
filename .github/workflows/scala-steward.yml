@@ -28,6 +28,14 @@ jobs:
       # The sbt build lives in P4R-Type/, not the repo root. That is expressed
       # via `buildRoots` in .scala-steward.conf — this action has no
       # working-directory input.
+      # NOTE: PRs opened with the default GITHUB_TOKEN do not trigger further
+      # workflow runs, so ci.yml's `pull_request` job will NOT run on Steward's
+      # bump PRs. Given this build resolves pre-release artifacts (UPGRADE.md §3),
+      # those are exactly the PRs that most need a compile + testFull gate.
+      # To fix, swap in a PAT or a GitHub App token:
+      #   github-app-id:  ${{ vars.STEWARD_APP_ID }}
+      #   github-app-key: ${{ secrets.STEWARD_APP_KEY }}
+      # (both are declared inputs of this action; see its README).
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:

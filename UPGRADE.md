@@ -61,10 +61,20 @@ and deleting the committed generated tree. To confirm nothing had been
 hand-edited, the regenerated file set was diffed against the committed one:
 **119 generated vs 120 committed, identical names, the only difference being
 `ZioP4Runtime.scala`** — the zio-grpc stub that is no longer generated (§4).
-Nothing was lost.
+Nothing was lost. (The build now generates 117: `Any.scala` / `AnyProto.scala`
+also dropped out, see below.)
 
 Consequence: ScalaPB/gRPC/proto versions are now *real* inputs. Bumping them
 actually changes the generated API, and `.proto` edits now take effect.
+
+That cuts both ways. `src/protobuf/` vendored `google/protobuf/any.proto`, which
+— once codegen was live — generated `com.google.protobuf.any.Any` into
+`src_managed`, a class **`scalapb-runtime` already ships**, from a proto older
+than the protobuf-java 4.35.0 the runtime pulls. The locally compiled copy
+shadowed the library's. The vendored copy has been deleted; protoc resolves the
+import from its built-in well-known-types include path, and `Any` now comes from
+`scalapb-runtime`. `google/rpc/status.proto` is *not* shipped by scalapb-runtime
+and correctly stays vendored.
 
 ## 3. Pre-release dependencies (the cost of sbt 2)
 
@@ -83,14 +93,16 @@ forces a chain of pre-release versions:
 - `scalapb-json4s` — required by `typegen` to parse p4info JSON — only publishes
   **1.0.0-alpha.1** on the 1.0 line, and it pins `scalapb-runtime` 1.0.0-alpha.1.
   Against runtime alpha.6 this is an eviction sbt treats as an error, so the build
-  sets:
+  declares a version scheme for that one artifact:
   ```scala
-  evictionErrorLevel := Level.Warn
+  libraryDependencySchemes +=
+    "com.thesamet.scalapb" %% "scalapb-runtime" % VersionScheme.Always
   ```
-  and carries this warning:
-  ```
-  [warn] com.thesamet.scalapb:scalapb-runtime_3:1.0.0-alpha.6 (early-semver) is selected over 1.0.0-alpha.1
-  ```
+  This is deliberately scoped rather than a blanket `evictionErrorLevel :=
+  Level.Warn`, which would also silence every *future* binary-incompatible
+  eviction (grpc, zio, protobuf-java) that Scala Steward bumps into the build —
+  precisely the class of problem eviction errors exist to catch.
+
   **This is the main fragility of the sbt 2 choice.** It is not theoretical
   hand-waving: it is a real cross-alpha binary-compatibility gamble. In practice
   the path we exercise works — `parseP4info` parses a p4c v1model p4info and emits
@@ -140,9 +152,9 @@ review.
 
 ### Warning noise
 
-A cold build (action cache cleared — see §9) emits **864 warnings, 807 of them
+A cold build (action cache cleared — see §9) emits **856 warnings, 799 of them
 from ScalaPB-generated code**: ScalaPB 1.0.0-alpha.6's codegen still emits
-`_` as a type wildcard (565) and `private[this]` (274), both of which Scala 3.8
+`_` as a type wildcard (560) and `private[this]` (272), both of which Scala 3.8
 warns about. The remaining 57 are in `src/main/scala/examples` (32) and
 `src/main/scala/api` (25). All benign; none are errors. If the noise becomes a
 problem, extend the existing `-Wconf` rule to silence `src_managed` rather than
@@ -269,6 +281,12 @@ mechanism*, not the artifact QuackMPP should import.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
+8. **Scala Steward's PRs are not CI-gated.** The workflow uses the default
+   `GITHUB_TOKEN`, and PRs opened with it do not trigger further workflow runs —
+   so `ci.yml` will not run on dependency bumps, which given §3 are the PRs that
+   most need it. Needs a PAT or GitHub App token (`github-app-id` /
+   `github-app-key`); both require repo secrets, so this is a decision for the
+   repo owner. Marked inline in `.github/workflows/scala-steward.yml`.
 
 ## 9. Working on this build — two traps
 
