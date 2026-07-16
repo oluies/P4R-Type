@@ -39,9 +39,10 @@ custom `repositories` task (coursier's documented defaults say yes; untested her
 > 2. `sbt -batch "compile; testFull"` and fix fallout in `src/main/scala/api/` and
 >    `src/main/scala/typegen/`. Report every source change the new protos forced.
 > 3. Confirm the `bucket` fixture still round-trips:
->    `sbt -batch "runMain parseP4info src/main/scala/examples/quackmpp_exchange.p4info.json quackmpp"`
+>    `sbt -batch "runMain parseP4info src/test/resources/quackmpp_exchange.p4info.json quackmpp"`
 >    must still produce `case "QuackMPP.exchange" => ("meta.quack.bucket", Exact) | "*"`,
->    and `QuackMppTypegenSuite` must stay green.
+>    and `QuackMppTypegenSuite` must stay green. (The generated fixture it is
+>    compared against lives at `src/test/scala/quackmpp_exchange.scala`.)
 > 4. Cross-check against what bmv2's `simple_switch_grpc` actually speaks (its PI
 >    dependency), and record in `UPGRADE.md` whether v1.5.0 protos are safe against
 >    the bmv2 version QuackMPP targets, or whether we should pin to v1.4.1.
