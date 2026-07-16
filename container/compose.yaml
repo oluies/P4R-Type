@@ -41,11 +41,11 @@ services:
   # One-shot: recompile quackmpp.p4 and refresh the committed p4info fixture.
   # Same image tag CI's p4info-fixture job uses, so local and CI agree.
   #
-  # It writes the *fixture* directly. There is exactly one committed p4info —
-  # P4R-Type/src/test/resources/quackmpp_exchange.p4info.json — and everything
-  # reads that one. An earlier version wrote a second copy next to the .p4, which
-  # nothing read: you could "regenerate" it, see no test change, and conclude the
-  # fixture was current.
+  # It writes the *fixture* directly. There is exactly one committed p4info for
+  # quackmpp.p4 — P4R-Type/src/test/resources/quackmpp_exchange.p4info.json — and
+  # that is the one the tests and the CI job read. An earlier version wrote a
+  # second copy next to the .p4, which nothing read: you could "regenerate" it,
+  # see no test change, and conclude the fixture was current.
   p4c:
     image: p4lang/p4c:latest
     platform: linux/amd64

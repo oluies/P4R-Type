@@ -1,8 +1,14 @@
 /* QuackMPP exchange fabric — minimal v1model dataplane.
  *
- * This exists to produce a p4info the way QuackMPP actually will: by running
- *   p4c --target bmv2 --arch v1model --p4runtime-files quackmpp.p4info.json
- * rather than by hand-writing JSON in the shape p4c is believed to emit.
+ * This exists to produce a p4info the way QuackMPP actually will — by running
+ * real p4c — rather than by hand-writing JSON in the shape p4c is believed to
+ * emit. (That guess was close but wrong: p4c also emits `initialDefaultAction`.)
+ *
+ * Regenerate the fixture with:
+ *   container/p4rt.sh gen
+ * which writes straight to src/test/resources/quackmpp_exchange.p4info.json.
+ * Do not write a p4info next to this file: nothing reads it, and CI compares
+ * against the fixture.
  *
  * The shape that matters for spec 003 is the `exchange` table: an EXACT match
  * on a field named `bucket`, plus an action with a couple of parameters. The

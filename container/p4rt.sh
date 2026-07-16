@@ -79,9 +79,9 @@ case "${1:-}" in
     ;;
 
   gen)
-    # Writes the fixture directly. There is exactly one committed p4info and
-    # everything reads it; generating a second copy next to the .p4 only creates
-    # something to drift.
+    # Writes the fixture directly. There is exactly one committed p4info for
+    # quackmpp.p4 and that is what the tests and CI read; generating a second
+    # copy next to the .p4 only creates something to drift.
     run_rm -v "$PROJ:/proj" -w /proj/examples/src/main/p4 "$P4C_IMAGE" \
       sh -c 'p4c --target bmv2 --arch v1model \
                --p4runtime-files /proj/src/test/resources/quackmpp_exchange.p4info.json \
