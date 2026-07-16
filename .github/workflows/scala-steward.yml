@@ -17,18 +17,19 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
 
+      # The sbt build lives in P4R-Type/, not the repo root. That is expressed
+      # via `buildRoots` in .scala-steward.conf — this action has no
+      # working-directory input.
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repo-config: .scala-steward.conf
-          # The sbt build lives in a subdirectory, not the repo root.
-          working-directory: P4R-Type

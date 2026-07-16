@@ -1,0 +1,11 @@
+version: 2
+
+# Scala Steward (see .github/workflows/scala-steward.yml) handles the sbt/Scala
+# dependencies. It does not update GitHub Actions versions — Dependabot does.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
