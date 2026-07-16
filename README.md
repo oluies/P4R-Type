@@ -21,6 +21,10 @@ This repository contains:
 
   * In `P4R-Type/`: The code for the P4R-Type API and type generator, as well as examples that use the P4R-Type API.
   * In `vm/`: A virtual machine that sets up a simulation network using mininet, which can be used to test the API.
+  * In `container/`: A containerised `simple_switch_grpc` plus p4c, for the things that do not need a
+    network — regenerating the p4info fixture and exercising the P4Runtime wire. **It is not a
+    replacement for `vm/`** (no mininet, no topology, different p4c/bmv2 versions);
+    see [ARCHITECTURE.md](ARCHITECTURE.md) §6 for the comparison.
 
 **Note for OOPSLA artifact version:** As an alternative to building the VM image with Vagrant, the top folder also contains the file `P4R-Type_Demo_VM.ova`, a ready-to-use VM image. It can be imported with the VirtualBox interface using the default settings. In case you use this method for setting up the VM, skip the first three steps of the **Kick-the-Tires Guide** and start the VM directly from VirtualBox instead.
 

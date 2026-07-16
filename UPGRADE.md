@@ -516,7 +516,7 @@ verified free of `quackmpp/` entries.
    after a p4info change; *deploying* that change needs a capability this library
    does not have, so QuackMPP must either add it or drive
    `p4.v1.p4runtime.*` directly. This is also what stops `Bmv2WireSuite` from
-   doing a full table-entry round trip. See [ARCHITECTURE.md](ARCHITECTURE.md) §6.
+   doing a full table-entry round trip. See [ARCHITECTURE.md](ARCHITECTURE.md) §7.
 
 ## 9. Working on this build — two traps
 

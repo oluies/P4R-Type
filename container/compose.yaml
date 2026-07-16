@@ -1,0 +1,78 @@
+# Containerised P4 tooling — the fast path next to `vm/`.
+#
+# This is NOT a replacement for vm/. See ARCHITECTURE.md §7 for what each gives
+# you and how they differ; the short version is that vm/ has mininet and a real
+# 4-switch topology, and this has a single bare switch you can reach on
+# localhost:9559 without VirtualBox.
+#
+# Apple's `container` has no compose support (`container compose` -> "Plugin
+# 'container-compose' not found"), so this file is Docker-only. `./p4rt.sh`
+# does the same thing on either runtime — prefer it if you use both.
+#
+#   docker compose up -d bmv2                    # a switch on localhost:9559
+#   docker compose --profile tools run --rm p4c  # regenerate the p4info fixture
+#   docker compose --profile vm    run --rm p4c-vm  # ...with the VM's p4c
+
+services:
+  # simple_switch_grpc with no pipeline loaded. Enough to exercise the
+  # P4Runtime wire (Bmv2WireSuite); not enough for table entries, because
+  # P4R-Type cannot push a pipeline config (UPGRADE.md §8.11).
+  bmv2:
+    image: p4lang/behavioral-model:latest
+    # p4lang publishes linux/amd64 only. Native on GitHub runners; emulated on
+    # Apple silicon (slow first start, then fine).
+    platform: linux/amd64
+    container_name: p4rt-bmv2
+    # The `--` is load-bearing: --grpc-server-addr is a target-specific option.
+    # Without it bmv2 prints usage and exits — while the published port still
+    # accepts connections, so a port check will lie to you.
+    command: ["simple_switch_grpc", "--no-p4", "--", "--grpc-server-addr", "0.0.0.0:9559"]
+    ports:
+      - "9559:9559"
+    healthcheck:
+      # Ask the service, not the runtime: a running container is not a working
+      # switch. `-d`/`up -d` returns well before gRPC is listening.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9559' 2>/dev/null || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 3s
+
+  # One-shot: recompile quackmpp.p4 and refresh the committed p4info fixture.
+  # Same image tag CI's p4info-fixture job uses, so local and CI agree.
+  p4c:
+    image: p4lang/p4c:latest
+    platform: linux/amd64
+    profiles: ["tools"]
+    volumes:
+      - ../P4R-Type/examples/src/main/p4:/w
+    working_dir: /w
+    command:
+      - sh
+      - -c
+      - |
+        p4c --target bmv2 --arch v1model \
+            --p4runtime-files /w/quackmpp.p4info.json -o /w /w/quackmpp.p4 &&
+        echo "wrote quackmpp.p4info.json with $$(p4c --version | head -1)"
+
+  # The p4c the mininet VM actually ships (vm/ installs p4lang-p4c 1.2.4.2 from
+  # the home:p4lang OBS repo; 1.2.4.3 is the closest published image).
+  #
+  # Use this to check the fixture against VM-era output. Known and verified: it
+  # does NOT emit `initialDefaultAction`, so its p4info differs from the
+  # committed fixture — but typegen ignores that field, so the *generated types*
+  # are byte-identical either way. See ARCHITECTURE.md §7.
+  p4c-vm:
+    image: p4lang/p4c:1.2.4.3
+    platform: linux/amd64
+    profiles: ["vm"]
+    volumes:
+      - ../P4R-Type/examples/src/main/p4:/w
+    working_dir: /w
+    command:
+      - sh
+      - -c
+      - |
+        p4c --target bmv2 --arch v1model \
+            --p4runtime-files /w/quackmpp.vm-era.p4info.json -o /tmp /w/quackmpp.p4 &&
+        echo "wrote quackmpp.vm-era.p4info.json with $$(p4c --version | head -1)"
