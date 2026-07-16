@@ -36,8 +36,12 @@ jobs:
       #   github-app-id:  ${{ vars.STEWARD_APP_ID }}
       #   github-app-key: ${{ secrets.STEWARD_APP_KEY }}
       # (both are declared inputs of this action; see its README).
+      # No `repo-config` input on purpose: that input supplies *default* values
+      # (for multi-repo `repos-file` runs). Scala Steward already auto-reads
+      # .scala-steward.conf from the root of the repo it clones as the
+      # repo-specific config, and it is that copy which makes `buildRoots` work.
+      # Passing the same file as `repo-config` would feed it down both paths.
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          repo-config: .scala-steward.conf
