@@ -8,25 +8,15 @@ Run these one per session, in this order.
 
 ---
 
-## Prompt 1 — Set a real `organization` and publish coordinates (small, do first)
+## ~~Prompt 1 — Set a real `organization` and publish coordinates~~ — DONE
 
-> In `P4R-Type/build.sbt`, `organization` is unset, so `publishLocal` produces the
-> coordinate `p4rt-scala %% p4rt-scala % 0.1.0-SNAPSHOT`. QuackMPP (a Mill build)
-> needs to depend on this artifact.
->
-> Set `organization := "io.github.oluies"` (confirm the right groupId with me
-> first if you think another is better — it must be one we can eventually publish
-> to Maven Central under). Then:
-> 1. Run `cd P4R-Type && sbt -batch publishLocal` and report the exact artifact
->    path written under `~/.ivy2/local`.
-> 2. Verify the published jar actually contains `p4rtype.*` and the generated
->    `p4.v1.p4runtime.*` classes (`unzip -l` the jar) — the ScalaPB codegen writes
->    to `sourceManaged`, so confirm generated classes are packaged and not dropped.
-> 3. Write the exact Mill `ivyDeps` line QuackMPP should use into `UPGRADE.md` §7,
->    replacing the placeholder, and state whether Mill needs an explicit
->    `~/.ivy2/local` resolver.
->
-> Do not change any dependency versions in this session.
+Completed in commit `9ed8b84`. `organization := "io.github.oluies"`; `publishLocal`
+verified to write `io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT` to `~/.ivy2/local`
+with generated classes packaged; `UPGRADE.md` §7 records the Mill `mvnDeps` line.
+Also moved the QuackMPP fixture to test scope so it no longer ships inside the jar.
+
+Left open for the QuackMPP side: confirm Mill resolves `~/.ivy2/local` without a
+custom `repositories` task (coursier's documented defaults say yes; untested here).
 
 ---
 
