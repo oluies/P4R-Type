@@ -48,6 +48,21 @@ message Documentation {
   string description = 2;
 }
 
+// Used to describe the required properties of the underlying platform.
+// Added in v1.4.0
+message PlatformProperties {
+  // The minimum number of multicast entries (i.e. multicast groups) that the
+  // platform is required to support. If 0, there are no requirements.
+  int32 multicast_group_table_size = 1;
+  // The minimum number of replicas that the platform is required to support
+  // across all  groups. If 0, there are no requirements.
+  int32 multicast_group_table_total_replicas = 2;
+  // The number of replicas that the platform is required to support per
+  // group/entry. If 0, `multicast_group_table_total_replicas` should be used.
+  // Must be no larger than `multicast_group_table_total_replicas`.
+  int32 multicast_group_table_max_replicas_per_entry = 3;
+}
+
 // Top-level package documentation describing the forwarding pipeline config
 // Can be used to manage multiple P4 packages.
 message PkgInfo {
@@ -73,6 +88,11 @@ message PkgInfo {
   string url = 8;
   // Miscellaneous metadata, structured; a way to extend PkgInfo
   repeated StructuredAnnotation structured_annotations = 9;
+  // If set, specifies the properties that the underlying platform should have.
+  // If the platform does not conform to these properties, the server should
+  // reject the P4Info when used with a SetForwardingPipelineConfigRequest.
+  // Added in 1.4.0
+  PlatformProperties platform_properties = 11;
 }
 
 // wrapping the enum in a message to avoid name collisions in C++, where "enum
@@ -189,6 +209,20 @@ message MatchField {
   repeated StructuredAnnotation structured_annotations = 9;
 }
 
+// A TableActionCall references a particular action id and executes the
+// action with the supplied list of arguments.
+// Arguments are matched to the id of the respective action parameter.
+// TableActionCalls may be used as the default action call of a table implementation.
+// Added in 1.4.0.
+message TableActionCall {
+  uint32 action_id = 1;
+  message Argument {
+    uint32 param_id = 2;
+    bytes value = 3;
+  }
+  repeated Argument arguments = 4;
+}
+
 message Table {
   Preamble preamble = 1;
   repeated MatchField match_fields = 2;
@@ -199,6 +233,9 @@ message Table {
   repeated ActionRef action_refs = 3;
   // 0 (default value) means that the table does not have a const default action
   uint32 const_default_action_id = 4;
+  // The initial default action of the table. This can be overridden at runtime.
+  // Added in 1.4.0.
+  TableActionCall initial_default_action = 5;
   // P4 id of the "implementation" for this table (e.g. action profile id); 0
   // (default value) means that the table is a regular (direct) match table. As
   // of today, only action profiles are supported but other table
@@ -217,8 +254,18 @@ message Table {
   }
   // is idle timeout supported for this table?
   IdleTimeoutBehavior idle_timeout_behavior = 9;
-  // table with static P4 entries, cannot be modified at runtime
+  // True if and only if the table's entries are immutable,
+  // i.e. defined using the 'const entries' table property in the P4
+  // source code, and thus entries cannot be deleted, modified, or
+  // inserted at run time.
   bool is_const_table = 10;
+  // True if and only if the table has initial entries defined using
+  // the 'entries' table property in the P4 source code, either with
+  // or without the 'const' qualifier on 'entries', and there is at
+  // least one entry in that list.  This field is false if the list of
+  // entries is empty in the P4 source code.
+  // Added in 1.4.0.
+  bool has_initial_entries = 11;
   // architecture-specific table properties which are not part of the core P4
   // language or of the PSA architecture.
   google.protobuf.Any other_properties = 100;
@@ -250,9 +297,9 @@ message Action {
     // `annotation_locations[i]`.
     repeated SourceLocation annotation_locations = 8;
     int32 bitwidth = 4;
-    // Documentation of the Param
+    // Documentation of the Param.
     Documentation doc = 5;
-    // unset if not user-defined type
+    // unset if not user-defined type.
     P4NamedType type_name = 6;
     repeated StructuredAnnotation structured_annotations = 7;
   }
@@ -272,18 +319,37 @@ message ActionProfile {
   // 0 if the action profile does not have a selector. Otherwise, semantics as
   // specified by `selector_size_semantics` below.
   int32 max_group_size = 5;
-  enum SelectorSizeSemantics {
-    // indicates that `size` and `max_group_size` represent the maximum sum of
-    // weights that can be present across all selector groups and within a
-    // single selector group respectively.
-    SUM_OF_WEIGHTS = 0;
-    // indicates that `size` and `max_group_size` represent the maximum number
-    // of members that can be present across all selector groups and within a
-    // single selector group respectively.
-    SUM_OF_MEMBERS = 1;
+
+  // indicates that `size` and `max_group_size` represent the maximum sum of
+  // weights that can be present across all selector groups and within a
+  // single selector group respectively.
+  // Added in v1.4.0.
+  message SumOfWeights {}
+
+  // indicates that `size` and `max_group_size` represent the maximum number
+  // of members that can be present across all selector groups and within a
+  // single selector group respectively.
+  // Added in v1.4.0.
+  message SumOfMembers {
+    // the maximum weight of each individual member in a group.
+    int32 max_member_weight = 1;
   }
-  // specifies the semantics of `size` and `max_group_size` above
-  SelectorSizeSemantics selector_size_semantics = 6;
+
+  // specifies the semantics of `size` and `max_group_size` above.
+  oneof selector_size_semantics {
+    // group size is the sum of the group's weights.
+    // Added in v1.4.0.
+    SumOfWeights sum_of_weights = 6;
+    // group size is the sum of the group's members.
+    // Added in v1.4.0.
+    SumOfMembers sum_of_members = 7;
+  }
+
+  // Dictates whether the controller can specify weights for groups programmed
+  // in this ActionProfile. If `weights_disallowed` is true, then all weights
+  // must be absent. Unset (false) in action profiles without selectors.
+  // Added in v1.5.0.
+  bool weights_disallowed = 8;
 }
 
 message CounterSpec {
@@ -321,7 +387,30 @@ message MeterSpec {
     BYTES = 1;
     PACKETS = 2;
   }
+  // Used to restrict the MeterConfigs that can be used to instantiate the
+  // meter.
+  // Added in 1.4.0.
+  enum Type {
+    // As described in RFC 2698, allows meters to use two rates to split packets
+    // into three potential colors.
+    // MeterConfigs on table entries using this meter type MUST have `eburst ==
+    // 0` (i.e. unset).
+    TWO_RATE_THREE_COLOR = 0;
+    // As described in RFC 2697, allows meters to use one rate with an Excess
+    // Burst Size (EBS) to split packets into three potential colors.
+    // MeterConfigs on table entries using this meter type MUST have
+    // `cir == pir && cburst == pburst`.
+    SINGLE_RATE_THREE_COLOR = 1;
+    // A simplified version of RFC 2697, restricting meters to using a single
+    // rate to split packets into only RED or GREEN, by not providing an Excess
+    // Burst Size (EBS).
+    // MeterConfigs on table entries using this meter type MUST have
+    // `cir == pir && cburst == pburst && eburst == 0` (i.e. unset).
+    SINGLE_RATE_TWO_COLOR = 2;
+  }
   Unit unit = 1;
+  // Added in 1.4.0.
+  Type type = 2;
 }
 
 message Meter {

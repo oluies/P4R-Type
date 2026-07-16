@@ -152,24 +152,58 @@ This drops `zio` + `zio-streams` entirely. P4R-Type's only remaining runtime
 dependencies are ScalaPB, gRPC and protobuf-java — appropriate for a library
 QuackMPP embeds, since it no longer forces a ZIO version on its consumers.
 
-## 5. P4Runtime protos — NOT yet updated (open work)
+## 5. P4Runtime protos — refreshed to v1.5.0
 
-Upstream `p4lang/p4runtime` is at **v1.5.0** (Feb 2026). The vendored protos were
-compared against it:
+Upstream `p4lang/p4runtime` is at **v1.5.0** (Feb 2026). `p4data.proto` and
+`p4types.proto` turned out to be byte-identical to v1.5.0 already; only
+`p4runtime.proto` (793 → 875 lines) and `p4info.proto` (390 → 479) were behind.
+All four are now at v1.5.0.
 
-| proto | status |
-| --- | --- |
-| `p4/v1/p4data.proto` | identical to v1.5.0 |
-| `p4/config/v1/p4types.proto` | identical to v1.5.0 |
-| `p4/v1/p4runtime.proto` | **behind** (793 vs 875 lines) |
-| `p4/config/v1/p4info.proto` | **behind** (390 vs 479 lines) |
+**The upgrade required zero source changes.** `compile` + `testFull` pass, and the
+`bucket` fixture still regenerates byte-identically. Generated files 117 → 120
+(`PlatformProperties`, `TableActionCall`, `BackupReplica`).
 
-`p4info.proto` is missing at least `PlatformProperties` (added v1.4.0),
-`platform_properties` on `PkgInfo`, and `TableActionCall`. These are additive
-proto3 changes, so the current code keeps working, but the refresh has **not**
-been done here — it is deferred to a focused session (see `PROMPTS.md`), because
-regenerating against v1.5.0 changes the generated API surface and wants its own
-review.
+What changed, checked field-by-field rather than assumed:
+
+- **The service contract is unchanged.** Same six RPCs (`Write`, `Read`,
+  `SetForwardingPipelineConfig`, `GetForwardingPipelineConfig`, `StreamChannel`,
+  `Capabilities`) with identical signatures.
+- **`p4info.proto` is purely additive** — no field removed, none renumbered. New:
+  `PlatformProperties` + `PkgInfo.platform_properties` (v1.4.0), `TableActionCall`,
+  `Table.initial_default_action`, `ActionProfile.max_member_weight`.
+- **`p4runtime.proto` is additive with one API-shape change**: `TableEntry.is_const`,
+  `MeterConfig.eburst`, `Replica.backup_replicas`/`BackupReplica` (v1.5.0), and —
+  the one to know about — `Replica.egress_port` is now inside a `oneof port_kind`
+  alongside `bytes port = 3` (v1.4.0):
+
+  ```protobuf
+  message Replica {
+    oneof port_kind {
+      uint32 egress_port = 1 [deprecated=true];   // deprecated in v1.4.0
+      bytes  port        = 3;                     // added in v1.4.0
+    }
+    uint32 instance = 2;
+    repeated BackupReplica backup_replicas = 4;   // added in v1.5.0
+  }
+  ```
+
+  Field 1 keeps its number and type, so this is **wire-compatible**, but it changes
+  the *generated Scala API*: `Replica` now exposes `portKind: Replica.PortKind`
+  (a sealed oneof) rather than a flat `egressPort`. Harmless here — P4R-Type does
+  not reference `Replica`, multicast, or clone sessions anywhere — but see §8.9.
+
+### Is v1.5.0 safe against bmv2?
+
+Yes, and there is no need to pin v1.4.1. bmv2's `simple_switch_grpc` gets its
+P4Runtime from PI, which vendors `p4lang/p4runtime` as a git submodule pinned at
+commit `ec4eb5e` (2024-08-18) — *before* the v1.4.0 release (2024-09-13). So bmv2
+effectively speaks ~v1.3.0-era P4Runtime, i.e. **our client protos are now ahead of
+the switch**.
+
+That is fine, because: the RPC set is identical; P4Runtime v1 is proto3, so a
+server ignores fields it does not know; and P4R-Type does not populate any of the
+post-v1.3 additions. A newer client talking to an older server is only a problem if
+the client *depends on* new fields, which it does not.
 
 ### Warning noise
 
@@ -309,8 +343,8 @@ verified free of `quackmpp/` entries.
 2. ~~**`organization` is unset (§7).**~~ Fixed: `organization := "io.github.oluies"`,
    `publishLocal` verified to produce `io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT`
    in `~/.ivy2/local` with all generated classes packaged (§7).
-3. **Protos are behind v1.5.0 (§5).** Additive-only so far, but bmv2 feature work
-   (e.g. platform properties) will want the refresh.
+3. ~~**Protos are behind v1.5.0 (§5).**~~ Done — all four protos are at v1.5.0,
+   with zero source changes and the `bucket` fixture unchanged (§5).
 4. **There is no real test suite upstream.** The inherited suite was the sbt
    template's `assertEquals(42, 42)`. `testFull` being green proved nothing before
    `QuackMppTypegenSuite` was added. Treat upstream green as unverified.
@@ -329,6 +363,17 @@ verified free of `quackmpp/` entries.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
+9. **If QuackMPP uses packet replication, read §5's `Replica` note first.** An MPP
+   exchange fabric plausibly wants multicast/clone to fan packets across workers,
+   and that is the one place the v1.5.0 refresh bites:
+   - the generated API is `Replica(portKind = Replica.PortKind.EgressPort(n))`,
+     not `Replica(egressPort = n)`;
+   - and since bmv2 is pinned pre-v1.4.0 (§5), it will **not** understand the new
+     `bytes port = 3` — against bmv2 you must use the *deprecated* `egress_port`
+     arm of the oneof. Deprecated-but-correct here.
+
+   P4R-Type itself models neither multicast nor clone sessions, so QuackMPP would
+   be building on `p4.v1.p4runtime.*` directly rather than on the `p4rtype` API.
 8. **Scala Steward's PRs are not CI-gated.** The workflow uses the default
    `GITHUB_TOKEN`, and PRs opened with it do not trigger further workflow runs —
    so `ci.yml` will not run on dependency bumps, which given §3 are the PRs that

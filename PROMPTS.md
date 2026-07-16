@@ -20,7 +20,17 @@ custom `repositories` task (coursier's documented defaults say yes; untested her
 
 ---
 
-## Prompt 2 — Refresh the P4Runtime protos to v1.5.0
+## ~~Prompt 2 — Refresh the P4Runtime protos to v1.5.0~~ — DONE
+
+All four protos are at v1.5.0. Zero source changes needed; `bucket` fixture
+byte-identical; 7/7 green. Service RPC set unchanged, p4info purely additive,
+`Replica.egress_port` moved into a `oneof` (wire-compatible, API-changing, unused
+here). v1.5.0 is safe against bmv2 (which is pinned pre-v1.4.0) — no v1.4.1 pin
+needed. See `UPGRADE.md` §5 and blocker §8.9. Original prompt kept below.
+
+---
+
+## Prompt 2 (original) — Refresh the P4Runtime protos to v1.5.0
 
 > `P4R-Type/src/protobuf/` vendors P4Runtime protos that are behind upstream
 > `p4lang/p4runtime` v1.5.0. Per `UPGRADE.md` §5: `p4data.proto` and
