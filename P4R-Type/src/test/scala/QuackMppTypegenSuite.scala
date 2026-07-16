@@ -14,7 +14,8 @@ import typegen.generate
   * field a *compile* error in the controller, not a runtime failure.
   *
   * The types under test are generated from
-  * `src/main/scala/examples/quackmpp_exchange.p4info.json`, which declares an
+  * `src/test/resources/quackmpp_exchange.p4info.json` — emitted by real p4c from
+  * `examples/src/main/p4/quackmpp.p4` — which declares an
   * exact-match table `QuackMPP.exchange` keyed on `meta.quack.bucket`.
   *
   * Note on how these tests are written: the negative cases assert only that the

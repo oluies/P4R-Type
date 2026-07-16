@@ -46,7 +46,7 @@ jobs:
       #      Pull requests: Read and write   (open the PRs)
       #
       #    It falls back to GITHUB_TOKEN if unset so the workflow still runs —
-      #    but the PRs it opens will NOT be CI-gated. See UPGRADE.md §8.8.
+      #    but the PRs it opens will NOT be CI-gated. See UPGRADE.md §8.10.
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:

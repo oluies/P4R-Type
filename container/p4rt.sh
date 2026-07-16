@@ -79,9 +79,13 @@ case "${1:-}" in
     ;;
 
   gen)
-    run_rm -v "$P4DIR:/w" -w /w "$P4C_IMAGE" \
-      sh -c 'p4c --target bmv2 --arch v1model --p4runtime-files /w/quackmpp.p4info.json -o /w /w/quackmpp.p4'
-    cp "$P4DIR/quackmpp.p4info.json" "$PROJ/src/test/resources/quackmpp_exchange.p4info.json"
+    # Writes the fixture directly. There is exactly one committed p4info and
+    # everything reads it; generating a second copy next to the .p4 only creates
+    # something to drift.
+    run_rm -v "$PROJ:/proj" -w /proj/examples/src/main/p4 "$P4C_IMAGE" \
+      sh -c 'p4c --target bmv2 --arch v1model \
+               --p4runtime-files /proj/src/test/resources/quackmpp_exchange.p4info.json \
+               -o /tmp quackmpp.p4'
     echo "refreshed src/test/resources/quackmpp_exchange.p4info.json"
     echo "now regenerate the types:  sbt \"runMain typegen.parseP4info src/test/resources/quackmpp_exchange.p4info.json quackmpp\""
     ;;

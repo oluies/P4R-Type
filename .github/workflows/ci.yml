@@ -72,22 +72,34 @@ jobs:
       # `sh -e {0}`, and p4lang/p4c's sh is dash — which rejects `set -o pipefail`
       # with "Illegal option -o pipefail" before running a single line.
       #
-      # Paths are absolute via $GITHUB_WORKSPACE rather than relative: the first
-      # version used `../../../` from examples/src/main/p4, which is one level
-      # short of P4R-Type/, and `diff` then failed with "No such file or
-      # directory" while the script reported it as *drift* — the same misleading
-      # failure this job's predecessor was rewritten to avoid.
+      # Paths are relative to the workspace root — this step sets no
+      # working-directory, so that is already its cwd. Two earlier versions got
+      # this wrong in different ways, and both are worth not repeating:
+      #
+      #   `../../../` from working-directory examples/src/main/p4 is one level
+      #   short of P4R-Type/, so diff never found the fixture — and reported it
+      #   as *drift*, the exact misleading failure this job's predecessor was
+      #   rewritten to avoid.
+      #
+      #   `${{ github.workspace }}` is evaluated on the host, but this is a
+      #   container job: the runner mounts /home/runner/work at /__w, so host
+      #   paths are not the container's paths. It happens to work (the runner
+      #   translates path-valued env vars on injection), but it depends on that
+      #   translation, and `${{ }}` expansion cannot be checked locally at all.
+      #
+      # Workspace-relative paths are immune to both.
       - name: Recompile the P4 and compare the emitted p4info
         shell: bash
         env:
-          FIXTURE: ${{ github.workspace }}/P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
-          P4SRC: ${{ github.workspace }}/P4R-Type/examples/src/main/p4
+          FIXTURE: P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
+          P4SRC: P4R-Type/examples/src/main/p4
         run: |
           set -euo pipefail
 
-          test -f "$FIXTURE" || { echo "::error::fixture missing at $FIXTURE"; exit 1; }
-          test -f "$P4SRC/quackmpp.p4" || { echo "::error::P4 source missing at $P4SRC"; exit 1; }
+          test -f "$FIXTURE" || { echo "::error::fixture missing at $(pwd)/$FIXTURE"; exit 1; }
+          test -f "$P4SRC/quackmpp.p4" || { echo "::error::P4 source missing at $(pwd)/$P4SRC"; exit 1; }
 
+          FIXTURE="$(pwd)/$FIXTURE"   # absolute before the cd below
           cd "$P4SRC"
           if ! p4c --target bmv2 --arch v1model \
                    --p4runtime-files /tmp/fresh.p4info.json -o /tmp quackmpp.p4; then

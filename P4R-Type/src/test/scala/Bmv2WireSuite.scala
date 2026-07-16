@@ -13,17 +13,26 @@ import p4.v1.p4runtime.{CapabilitiesRequest, GetForwardingPipelineConfigRequest}
   * *measures* it.
   *
   * Skipped unless P4RT_BMV2 is set (`host:port`), so the normal suite stays fast
-  * and container-free:
+  * and container-free. Easiest way to run it:
+  *
+  * {{{
+  * container/p4rt.sh test        # starts bmv2, waits for it, runs this suite
+  * }}}
+  *
+  * By hand, if you must — and mind the `--`:
   *
   * {{{
   * container run -d --name bmv2 --platform linux/amd64 -p 9559:9559 \
   *   docker.io/p4lang/behavioral-model:latest \
-  *   simple_switch_grpc --no-p4 --grpc-server-addr 0.0.0.0:9559
+  *   simple_switch_grpc --no-p4 -- --grpc-server-addr 0.0.0.0:9559
   * P4RT_BMV2=localhost:9559 sbt "testOnly *Bmv2WireSuite"
   * }}}
   *
-  * Note `localhost`, not the IP `container ls` prints — that IP is not routable
-  * from the macOS host. See ARCHITECTURE.md.
+  * The `--` is load-bearing: `--grpc-server-addr` is a target-specific option,
+  * and without the separator bmv2 prints usage and exits — while the published
+  * port still accepts connections, so it looks up and you get an unexplained
+  * UNAVAILABLE here. `localhost`, too, not the IP `container ls` prints: that
+  * address is not routable from the macOS host. See ARCHITECTURE.md §5.
   */
 class Bmv2WireSuite extends munit.FunSuite {
 

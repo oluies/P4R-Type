@@ -40,20 +40,28 @@ services:
 
   # One-shot: recompile quackmpp.p4 and refresh the committed p4info fixture.
   # Same image tag CI's p4info-fixture job uses, so local and CI agree.
+  #
+  # It writes the *fixture* directly. There is exactly one committed p4info —
+  # P4R-Type/src/test/resources/quackmpp_exchange.p4info.json — and everything
+  # reads that one. An earlier version wrote a second copy next to the .p4, which
+  # nothing read: you could "regenerate" it, see no test change, and conclude the
+  # fixture was current.
   p4c:
     image: p4lang/p4c:latest
     platform: linux/amd64
     profiles: ["tools"]
     volumes:
-      - ../P4R-Type/examples/src/main/p4:/w
-    working_dir: /w
+      - ../P4R-Type:/proj
+    working_dir: /proj/examples/src/main/p4
     command:
       - sh
       - -c
       - |
         p4c --target bmv2 --arch v1model \
-            --p4runtime-files /w/quackmpp.p4info.json -o /w /w/quackmpp.p4 &&
-        echo "wrote quackmpp.p4info.json with $$(p4c --version | head -1)"
+            --p4runtime-files /proj/src/test/resources/quackmpp_exchange.p4info.json \
+            -o /tmp quackmpp.p4 &&
+        echo "refreshed src/test/resources/quackmpp_exchange.p4info.json with $$(p4c --version | head -1)" &&
+        echo "now: sbt \"runMain typegen.parseP4info src/test/resources/quackmpp_exchange.p4info.json quackmpp\""
 
   # The p4c the mininet VM actually ships (vm/ installs p4lang-p4c 1.2.4.2 from
   # the home:p4lang OBS repo; 1.2.4.3 is the closest published image).
