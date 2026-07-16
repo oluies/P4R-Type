@@ -3,12 +3,19 @@
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
 > **Scala 3.8.4 / sbt 2.0.2 / JDK 25**, to serve as the control-plane binding
-> library for QuackMPP. See **[UPGRADE.md](UPGRADE.md)** for the version record,
-> the sbt-vs-Mill decision, and known blockers, and **[PROMPTS.md](PROMPTS.md)**
-> for the deferred dependency work.
+> library for QuackMPP.
 >
-> The `sbt` invocations below still apply, but note that under sbt 2 you must run
-> `sbt "testFull"` rather than `sbt test` to actually execute the suite.
+> * **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the pieces fit (diagrams), how to
+>   run p4c/bmv2 in containers, and the known architectural gaps. Start here.
+> * **[UPGRADE.md](UPGRADE.md)** — version record, the sbt-vs-Mill decision, bmv2
+>   compatibility analysis, and blockers.
+> * **[PROMPTS.md](PROMPTS.md)** — follow-up work, and what is already done.
+>
+> Two things that will bite you if you skip them:
+> * Under sbt 2 you must run `sbt "testFull"`, not `sbt test` — `test` is
+>   incremental and will report success having run **zero** tests.
+> * sbt 2's action cache survives `clean`. For a genuinely cold build:
+>   `rm -rf ~/Library/Caches/sbt/v2 target` (macOS) / `~/.cache/sbt/v2` (Linux).
 
 This repository contains:
 

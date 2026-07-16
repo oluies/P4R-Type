@@ -39,7 +39,7 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
     val tableId =
       te.table match
         case "*" => 0
-        case "QuackMPP.exchange" => 33554433
+        case "QuackMPP.exchange" => 39494761
 
     val matchFields =
       (te.table, te.matches) match
@@ -51,8 +51,8 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
       te.action match
         case "*" => 0
         case "NoAction" => 21257015
-        case "QuackMPP.drop" => 16777218
-        case "QuackMPP.set_worker" => 16777217
+        case "QuackMPP.drop" => 27015566
+        case "QuackMPP.set_worker" => 28830730
 
     val params =
       (te.action, te.params) match
@@ -84,23 +84,23 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
 
     val table =
       te.tableId match
-        case 33554433 => "QuackMPP.exchange"
+        case 39494761 => "QuackMPP.exchange"
         case 0 => "*"
     val matches =
       te.tableId match
-        case 33554433 => (te.`match`.find(_.fieldId == 1).map(fm => ("meta.quack.bucket", Exact(fm.fieldMatchType.exact.get.value))).get)
+        case 39494761 => (te.`match`.find(_.fieldId == 1).map(fm => ("meta.quack.bucket", Exact(fm.fieldMatchType.exact.get.value))).get)
         case 0 => "*"
     val action =
       actionId match
         case 21257015 => "NoAction"
-        case 16777218 => "QuackMPP.drop"
-        case 16777217 => "QuackMPP.set_worker"
+        case 27015566 => "QuackMPP.drop"
+        case 28830730 => "QuackMPP.set_worker"
         case 0 => "*"
     val params =
       actionId match
         case 21257015 => ()
-        case 16777218 => ()
-        case 16777217 => (teParams.find(_.paramId == 1).map(pm => ("worker_id", pm.value)).get, teParams.find(_.paramId == 2).map(pm => ("port", pm.value)).get)
+        case 27015566 => ()
+        case 28830730 => (teParams.find(_.paramId == 1).map(pm => ("worker_id", pm.value)).get, teParams.find(_.paramId == 2).map(pm => ("port", pm.value)).get)
         case 0 => "*"
     val myTable : XN = table.asInstanceOf[XN]
     val myAction : TA[myTable.type] = action.asInstanceOf[TA[myTable.type]]

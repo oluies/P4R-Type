@@ -25,23 +25,29 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      # The sbt build lives in P4R-Type/, not the repo root. That is expressed
-      # via `buildRoots` in .scala-steward.conf — this action has no
-      # working-directory input.
-      # NOTE: PRs opened with the default GITHUB_TOKEN do not trigger further
-      # workflow runs, so ci.yml's `pull_request` job will NOT run on Steward's
-      # bump PRs. Given this build resolves pre-release artifacts (UPGRADE.md §3),
-      # those are exactly the PRs that most need a compile + testFull gate.
-      # To fix, swap in a PAT or a GitHub App token:
-      #   github-app-id:  ${{ vars.STEWARD_APP_ID }}
-      #   github-app-key: ${{ secrets.STEWARD_APP_KEY }}
-      # (both are declared inputs of this action; see its README).
-      # No `repo-config` input on purpose: that input supplies *default* values
-      # (for multi-repo `repos-file` runs). Scala Steward already auto-reads
-      # .scala-steward.conf from the root of the repo it clones as the
-      # repo-specific config, and it is that copy which makes `buildRoots` work.
-      # Passing the same file as `repo-config` would feed it down both paths.
+      # Two non-obvious things here.
+      #
+      # 1. No `working-directory` / `repo-config` input. The sbt build lives in
+      #    P4R-Type/, not the repo root; that is expressed via `buildRoots` in
+      #    .scala-steward.conf. This action has no working-directory input, and
+      #    `repo-config` supplies *default* values (for multi-repo repos-file
+      #    runs) — Scala Steward already auto-reads .scala-steward.conf from the
+      #    root of the repo it clones, and it is that copy which makes
+      #    `buildRoots` take effect.
+      #
+      # 2. STEWARD_TOKEN, not the default GITHUB_TOKEN. PRs opened with
+      #    GITHUB_TOKEN do not trigger further workflow runs, so ci.yml's
+      #    `pull_request` job would never run on Steward's bump PRs — and since
+      #    this build resolves pre-release artifacts (UPGRADE.md §3), those are
+      #    exactly the PRs that need a compile + testFull gate.
+      #
+      #    STEWARD_TOKEN must be a fine-grained PAT scoped to this repository:
+      #      Contents:      Read and write   (push the update branches)
+      #      Pull requests: Read and write   (open the PRs)
+      #
+      #    It falls back to GITHUB_TOKEN if unset so the workflow still runs —
+      #    but the PRs it opens will NOT be CI-gated. See UPGRADE.md §8.8.
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.STEWARD_TOKEN || secrets.GITHUB_TOKEN }}

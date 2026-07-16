@@ -264,10 +264,23 @@ in message p4.config.v1.ActionProfile
 
 **Safe for the pipelines in play, but with a real caveat — not unconditionally.**
 
+**Measured, not inferred.** `Bmv2WireSuite` asks a real `simple_switch_grpc` over
+the upgraded stack (grpc-netty 1.82.2 + v1.5.0 protos) and it answers:
+
+```
+[info] bmv2 reports p4runtime_api_version = 1.3.0
+```
+
+That both confirms the reasoning below *and* proves the wire works: a v1.5.0
+client successfully drives a 1.3.0 switch. The static argument was:
 bmv2's `simple_switch_grpc` gets P4Runtime from PI, which vendors
 `p4lang/p4runtime` as a submodule pinned at `ec4eb5e` (2024-08-18) — *before* the
 v1.4.0 release (2024-09-13). So bmv2 speaks ~v1.3.0-era P4Runtime and our client
-protos are now ahead of the switch.
+protos are now ahead of the switch. The switch itself agrees.
+
+1.3.0 is also what makes the `selector_size_semantics` break above **real rather
+than theoretical**: bmv2 predates v1.4.0, so for a selector pipeline it would put
+field 6 on the wire as a varint enum while we expect a length-delimited message.
 
 That is fine **only where field 6 is unset**. Proto3 does not serialise an unset
 oneof, so a p4info with no action-profile selectors is byte-compatible in both
@@ -303,13 +316,17 @@ editing generated output.
 
 ## 6. typegen verified on a p4c v1model p4info
 
-`p4c` is not installed on the dev machine, so the fixture
-`src/test/resources/quackmpp_exchange.p4info.json` was written by hand in the
-exact JSON shape `p4c --target bmv2 --arch v1model --p4runtime-files` emits
-(protobuf JSON mapping: `pkgInfo.arch: "v1model"`, `matchFields[].matchType: "EXACT"`,
-p4c-style type-prefixed ids). It declares table `QuackMPP.exchange` with an
-exact match on `meta.quack.bucket` and actions `set_worker(worker_id, port)`,
-`drop`, `NoAction`.
+The fixture `src/test/resources/quackmpp_exchange.p4info.json` is emitted by
+**real p4c 1.2.5.15** (the `p4lang/p4c` container) from
+`examples/src/main/p4/quackmpp.p4`, a P4-16/v1model program declaring table
+`QuackMPP.exchange` with an exact match on `meta.quack.bucket` and actions
+`set_worker(worker_id, port)`, `drop`, `NoAction`. A CI job recompiles it and
+fails if the committed fixture drifts.
+
+It was originally hand-written "in the shape p4c emits", which was close but not
+right: real p4c also emits `initialDefaultAction` (the v1.5.0
+`Table.initial_default_action`), which no amount of care would have guessed. That
+is the argument for generating fixtures rather than imagining them.
 
 `typegen` emits (committed as `src/test/scala/quackmpp_exchange.scala`, and it
 compiles):
@@ -452,10 +469,11 @@ verified free of `quackmpp/` entries.
    QuackMPP's Mill build can call this directly and write the result wherever it
    wants, instead of shelling out and scraping stdout. There is still no sbt/Mill
    *task* wrapping it; that belongs in the consumer's build.
-6. **The examples require the mininet VM.** Everything under `src/main/scala/examples/`
-   except the p4info fixtures connects to a running switch, so it cannot be
-   exercised in CI. The typegen fixture is CI-safe precisely because it only
-   compiles.
+6. **The examples require the mininet VM**, so they are compile-checked only.
+   That gap is now partly closed without them: `Bmv2WireSuite` drives a real
+   `simple_switch_grpc` container (see [ARCHITECTURE.md](ARCHITECTURE.md) §5), which
+   is what turned §5's bmv2 analysis from reasoning into a measurement. A full
+   table-entry round trip still needs blocker 9 below.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
@@ -483,12 +501,22 @@ verified free of `quackmpp/` entries.
 
    P4R-Type itself models neither multicast nor clone sessions, so QuackMPP would
    be building on `p4.v1.p4runtime.*` directly rather than on the `p4rtype` API.
-8. **Scala Steward's PRs are not CI-gated.** The workflow uses the default
-   `GITHUB_TOKEN`, and PRs opened with it do not trigger further workflow runs —
-   so `ci.yml` will not run on dependency bumps, which given §3 are the PRs that
-   most need it. Needs a PAT or GitHub App token (`github-app-id` /
-   `github-app-key`); both require repo secrets, so this is a decision for the
-   repo owner. Marked inline in `.github/workflows/scala-steward.yml`.
+8. **Scala Steward's PRs are CI-gated only once `STEWARD_TOKEN` exists.** The
+   workflow now reads `secrets.STEWARD_TOKEN` and falls back to `GITHUB_TOKEN`.
+   PRs opened with `GITHUB_TOKEN` do not trigger workflow runs, so until the
+   secret is added, bump PRs still merge without CI — which given §3 are the PRs
+   that most need it. **Action for the repo owner:** create a fine-grained PAT
+   scoped to this repo with Contents: read/write and Pull requests: read/write,
+   and add it as `STEWARD_TOKEN`.
+
+9. **P4R-Type cannot install a forwarding pipeline.** There is no
+   `SetForwardingPipelineConfig` anywhere in `src/main/scala/api/` — the API is
+   connect / insert / read / write / delete. The mininet VM loads the pipeline out
+   of band, which is why this was never felt. QuackMPP spec 003 regenerates types
+   after a p4info change; *deploying* that change needs a capability this library
+   does not have, so QuackMPP must either add it or drive
+   `p4.v1.p4runtime.*` directly. This is also what stops `Bmv2WireSuite` from
+   doing a full table-entry round trip. See [ARCHITECTURE.md](ARCHITECTURE.md) §6.
 
 ## 9. Working on this build — two traps
 

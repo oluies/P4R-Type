@@ -51,4 +51,32 @@ jobs:
       # It is now QuackMppTypegenSuite's "typegen output matches the committed
       # quackmpp_exchange.scala" test, which calls the `generate` library entry
       # point directly — so `testFull` above covers it, with no log parsing and
-      # no stderr contamination to worry about.
+      # no ANSI/stderr contamination to worry about.
+
+  # The p4info fixture the tests run against is committed so the suite stays fast
+  # and container-free. This job is what keeps that commit honest: it recompiles
+  # examples/src/main/p4/quackmpp.p4 with real p4c and fails if the emitted
+  # p4info has drifted from the committed copy — e.g. because a newer p4c emits a
+  # field we do not model yet. (`initialDefaultAction` was exactly such a
+  # surprise: p4c emits it and a hand-written fixture had no way to know.)
+  p4info-fixture:
+    name: p4info fixture matches real p4c
+    runs-on: ubuntu-latest
+    # p4lang publishes linux/amd64 only; ubuntu-latest is amd64, so this runs
+    # natively here. On an arm64 dev machine it needs emulation — see ARCHITECTURE.md.
+    container: p4lang/p4c:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recompile the P4 and compare the emitted p4info
+        working-directory: P4R-Type/examples/src/main/p4
+        run: |
+          set -euo pipefail
+          p4c --target bmv2 --arch v1model \
+              --p4runtime-files /tmp/fresh.p4info.json -o /tmp quackmpp.p4
+          if ! diff -u ../../../src/test/resources/quackmpp_exchange.p4info.json /tmp/fresh.p4info.json; then
+            echo "::error::p4c's p4info no longer matches the committed fixture."
+            echo "::error::Copy /tmp/fresh.p4info.json over src/test/resources/quackmpp_exchange.p4info.json,"
+            echo "::error::regenerate src/test/scala/quackmpp_exchange.scala, and re-run the tests."
+            exit 1
+          fi

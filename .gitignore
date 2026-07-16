@@ -25,3 +25,7 @@ hs_err_pid*
 project/metals.sbt
 .bloop/
 .metals/
+
+# p4c build artifacts (quackmpp.p4info.json is committed as a test fixture)
+*.p4i
+P4R-Type/examples/src/main/p4/quackmpp.json
