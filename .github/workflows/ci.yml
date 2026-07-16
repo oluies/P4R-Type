@@ -43,35 +43,9 @@ jobs:
       - name: Compile and test
         run: sbt -batch "compile; Test/compile; testFull"
 
-      # Run typegen to files and check its exit status, rather than piping it
-      # straight into sed: otherwise a genuine failure (compile error, missing
-      # fixture, parseP4info throwing) produces no 'package quackmpp' line and
-      # gets misreported as drift with the real error discarded.
-      #
-      # stdout and stderr are kept SEPARATE and only stdout is parsed. The JVM
-      # writes sun.misc.Unsafe terminal-deprecation warnings to stderr (4 of them
-      # on JDK 25, from scala.runtime.LazyVals$ / protobuf-java / netty), emitted
-      # lazily on first use and not [info]-prefixed. Merging the streams would let
-      # any that fire after the first 'package' line be baked into the compared
-      # output and surface as a bogus drift failure.
-      - name: Verify typegen against the v1model p4info fixture
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          if ! sbt -batch "runMain parseP4info src/test/resources/quackmpp_exchange.p4info.json quackmpp" \
-               > "$tmp/typegen.out" 2> "$tmp/typegen.err"; then
-            echo "::error::typegen failed to run. stdout then stderr follow:"
-            cat "$tmp/typegen.out" "$tmp/typegen.err"
-            exit 1
-          fi
-          sed -n '/^package quackmpp/,$p' "$tmp/typegen.out" \
-            | sed '/^\[success\]/,$d' | sed '/^\[info\]/d' > "$tmp/regenerated.scala"
-          if [ ! -s "$tmp/regenerated.scala" ]; then
-            echo "::error::typegen produced no output. stdout then stderr follow:"
-            cat "$tmp/typegen.out" "$tmp/typegen.err"
-            exit 1
-          fi
-          if ! diff -u src/test/scala/quackmpp_exchange.scala "$tmp/regenerated.scala"; then
-            echo "::error::typegen output drifted from the committed quackmpp_exchange.scala. Regenerate it."
-            exit 1
-          fi
+      # The typegen drift check used to live here as a shell pipeline that ran
+      # `runMain parseP4info`, sed'd the types out of sbt's log and diffed them.
+      # It is now QuackMppTypegenSuite's "typegen output matches the committed
+      # quackmpp_exchange.scala" test, which calls the `generate` library entry
+      # point directly — so `testFull` above covers it, with no log parsing and
+      # no stderr contamination to worry about.

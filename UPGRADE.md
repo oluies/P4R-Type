@@ -30,8 +30,8 @@ So the upgrade was not optional — there was no working baseline to regress aga
 | scalapb-runtime / -grpc | 0.11.11 | **1.0.0-alpha.6** |
 | scalapb-json4s | 0.12.0 | **1.0.0-alpha.1** |
 | zio-grpc-codegen | 0.6.0-test4 | **removed** (see §4) |
-| zio | 2.0.0 | **2.1.26** |
-| zio-streams | (transitive) | **2.1.26, now explicit** |
+| zio | 2.0.0 | **removed** (see §4) |
+| zio-streams | (transitive) | **removed** (see §4) |
 | grpc-netty | 1.41.0 (and 1.41.0 again) | **1.82.2** |
 | protobuf-java | (via ScalaPB 0.11.11) | **4.35.0** (via ScalaPB alpha.6) |
 | munit | 0.7.29 | **1.3.4** |
@@ -127,9 +127,30 @@ non-generated source were **three unused imports** in `typegen.scala`
 They were removed along with `ZioCodeGenerator` from `PB.targets`. (A stray
 `org.checkerframework.checker.guieffect.qual.UI` import went with them.)
 
-`zio` itself is still used (`ZIOAppDefault`, `ZLayer`, `ZStream`, `ZSink`) and
-remains. `zio-streams` had been arriving transitively via `zio-grpc-core` and is
-now declared explicitly.
+### ZIO itself is gone too
+
+`zio` initially stayed, since `typegen.scala` used `ZIOAppDefault`, `ZLayer`,
+`RIO`, `ZStream` and `ZSink`. On inspection none of it was doing any work: ZIO
+appeared in exactly one file, and only as `RIO[Unit, String]` return types,
+`ZIO.succeed`/`ZIO.fail`, a hand-rolled `mapM` traverse, and a `ZStream`/`ZSink`
+pipeline to write a string to stdout. There is no concurrency, no async, no
+resource management, no environment — `typegen` reads one file, builds a String,
+and prints it. `RIO[Unit, X]` for a pure fallible computation *is* `Either`.
+
+So it was replaced mechanically: `RIO[Unit, X]` → `Either[String, X]` (28),
+`ZIO.fail(new Exception(m))` → `Left(m)` (20), `ZIO.succeed` → `Right` (31).
+For-comprehensions work unchanged, since `Either` is a monad in Scala 3. `mapM`
+became a fold over `Either` with the same fail-fast-in-order semantics, and the
+`ZStream`/`ZSink`-to-stdout pipeline became `print`.
+
+Verified: the emitted types are **byte-identical** (same md5 as the committed
+fixture, checked both through the CLI and through `generate`). Error paths
+improved as a side effect — bad arg count, unreadable file and malformed JSON now
+exit 1 with a one-line message instead of a ZIO `FiberFailure` stack trace.
+
+This drops `zio` + `zio-streams` entirely. P4R-Type's only remaining runtime
+dependencies are ScalaPB, gRPC and protobuf-java — appropriate for a library
+QuackMPP embeds, since it no longer forces a ZIO version on its consumers.
 
 ## 5. P4Runtime protos — NOT yet updated (open work)
 
@@ -293,9 +314,14 @@ verified free of `quackmpp/` entries.
 4. **There is no real test suite upstream.** The inherited suite was the sbt
    template's `assertEquals(42, 42)`. `testFull` being green proved nothing before
    `QuackMppTypegenSuite` was added. Treat upstream green as unverified.
-5. **`typegen` output is stdout-only.** There is no sbt task to regenerate types
-   into a source dir; callers shell out and redirect (CI does exactly this to check
-   for drift). QuackMPP's Mill build will need to wrap this itself.
+5. ~~**`typegen` output is stdout-only.**~~ Fixed (§4): `typegen` now exposes a
+   library entry point alongside the CLI —
+   ```scala
+   def generate(p4infoJson: String, packageName: String): Either[String, String]
+   ```
+   QuackMPP's Mill build can call this directly and write the result wherever it
+   wants, instead of shelling out and scraping stdout. There is still no sbt/Mill
+   *task* wrapping it; that belongs in the consumer's build.
 6. **The examples require the mininet VM.** Everything under `src/main/scala/examples/`
    except the p4info fixtures connects to a running switch, so it cannot be
    exercised in CI. The typegen fixture is CI-safe precisely because it only

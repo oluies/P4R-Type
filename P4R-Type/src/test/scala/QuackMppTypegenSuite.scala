@@ -23,6 +23,38 @@ import quackmpp.{TableMatchFields, TableAction, ActionParams}
   */
 class QuackMppTypegenSuite extends munit.FunSuite {
 
+  /** Drift check: the committed fixture must be exactly what typegen emits today.
+    *
+    * This calls the `generate` library entry point directly. It used to be a
+    * shell pipeline in CI that ran `runMain parseP4info`, sed'd the types out of
+    * sbt's log and diffed them — which was fragile in two ways worth remembering:
+    * a genuine failure produced no output and got misreported as "drift", and the
+    * JVM's sun.misc.Unsafe warnings on stderr could contaminate the comparison.
+    * A library entry point makes all of that unnecessary.
+    */
+  test("typegen output matches the committed quackmpp_exchange.scala") {
+    val p4info = scala.io.Source.fromResource("quackmpp_exchange.p4info.json").mkString
+    val committed =
+      scala.io.Source.fromFile(
+        System.getProperty("user.dir") + "/src/test/scala/quackmpp_exchange.scala"
+      ).mkString
+
+    generate(p4info, "quackmpp") match
+      case Left(err) => fail(s"typegen failed: $err")
+      case Right(out) =>
+        assertEquals(
+          out,
+          committed,
+          "typegen output drifted from src/test/scala/quackmpp_exchange.scala — regenerate it"
+        )
+  }
+
+  test("generate reports malformed p4info JSON as a Left rather than throwing") {
+    generate("{ not json", "quackmpp") match
+      case Left(err) => assert(err.contains("could not parse p4info JSON"), err)
+      case Right(_)  => fail("malformed JSON must not produce output")
+  }
+
   test("a table entry matching on the real 'bucket' field compiles") {
     val entry = TableEntry[TableMatchFields, TableAction, ActionParams](
       "QuackMPP.exchange",

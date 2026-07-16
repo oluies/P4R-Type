@@ -1,10 +1,6 @@
 import Console.print
 import scala.io.Source._
-//import zio._
-import zio.{RIO,ZIO,ZIOAppDefault,ZLayer}
-import zio.Console.printLine
 import p4.v1.p4runtime.*
-import zio.stream.ZStream
 import p4.v1.p4runtime.GetForwardingPipelineConfigRequest.ResponseType.ALL
 import p4.v1.p4runtime.FieldMatch.FieldMatchType
 import com.google.protobuf.ByteString
@@ -38,18 +34,21 @@ import p4.config.v1.p4info.Action.Param
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
-import zio.stream.ZSink
 
 
 // === Helper functions ===
-def mapM[A,B](as : Seq[A], op : A => RIO[Unit, B]) : RIO[Unit, Seq[B]] =
+/** Traverse: applies `op` to each element, short-circuiting on the first Left.
+  * Previously `RIO[Unit, _]`-based, but nothing here is effectful, concurrent or
+  * resourceful — it is a pure fallible transformation, which is what Either is.
+  */
+def mapM[A,B](as : Seq[A], op : A => Either[String, B]) : Either[String, Seq[B]] =
   val m_as = as.map(op)
-  m_as.foldLeft[RIO[Unit, Seq[B]]](ZIO.succeed(Seq[B]()))((m_res, m_e) => for {
+  m_as.foldLeft[Either[String, Seq[B]]](Right(Seq[B]()))((m_res, m_e) => for {
     res <- m_res
     e <- m_e
   } yield (res.:+(e)))
 
-def genImports() : RIO[Unit, String] = ZIO.succeed(
+def genImports() : Either[String, String] = Right(
   "import p4rtype.{Exact, LPM, Optional, Range, Ternary, P4RTypeRuntimeObserver}\n" +
   "import com.google.protobuf.ByteString\n" +
   "import p4.v1.p4runtime.FieldMatch\n" +
@@ -68,19 +67,19 @@ def genImports() : RIO[Unit, String] = ZIO.succeed(
 )
 
 // === Match types ===
-def genMatchFieldArg(mf : MatchField) : RIO[Unit, String] =
+def genMatchFieldArg(mf : MatchField) : Either[String, String] =
   mf.`match`.matchType match
-    case None => ZIO.fail(new Exception("Failure: Match field has no type."))
+    case None => Left("Failure: Match field has no type.")
     case Some(tp) =>
       tp match
-        case EXACT    => ZIO.succeed("\"" + mf.name + "\", Exact")
-        case LPM      => ZIO.succeed("Option[(\"" + mf.name + "\", LPM)]")
-        case RANGE    => ZIO.succeed("Option[(\"" + mf.name + "\", Range)]")
-        case TERNARY  => ZIO.succeed("Option[(\"" + mf.name + "\", Ternary)]")
-        case OPTIONAL => ZIO.succeed("Option[(\"" + mf.name + "\", Optional)]")
-        case _ => ZIO.fail(new Exception("Failure: Invalid match field type"))
+        case EXACT    => Right("\"" + mf.name + "\", Exact")
+        case LPM      => Right("Option[(\"" + mf.name + "\", LPM)]")
+        case RANGE    => Right("Option[(\"" + mf.name + "\", Range)]")
+        case TERNARY  => Right("Option[(\"" + mf.name + "\", Ternary)]")
+        case OPTIONAL => Right("Option[(\"" + mf.name + "\", Optional)]")
+        case _ => Left("Failure: Invalid match field type")
 
-def genMatchFieldArgs(mfs : Seq[MatchField]) : RIO[Unit, String] = for {
+def genMatchFieldArgs(mfs : Seq[MatchField]) : Either[String, String] = for {
   matchFieldArgs <- mapM(mfs, genMatchFieldArg)
 } yield {
   if mfs.size > 0 then
@@ -89,11 +88,11 @@ def genMatchFieldArgs(mfs : Seq[MatchField]) : RIO[Unit, String] = for {
     "Unit"
 }
 
-def genTableMatchFields(tables : Seq[Table]) : RIO[Unit, String] = for {
+def genTableMatchFields(tables : Seq[Table]) : Either[String, String] = for {
   tableMatchFields <- mapM[Table,(String, Seq[MatchField])](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
-      (preamble => ZIO.succeed((preamble.name, t.matchFields)))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
+      (preamble => Right((preamble.name, t.matchFields)))
   })
   cases <- mapM(tableMatchFields, (tn, mfs) => for {
     args <- genMatchFieldArgs(mfs)
@@ -111,11 +110,11 @@ def genTableMatchFields(tables : Seq[Table]) : RIO[Unit, String] = for {
   + "    case \"*\" => \"*\""
 }
 
-def genActions(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genActions(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actionNames <- mapM[P4InfoAction,String](actions, action => {
     action.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
-      (preamble => ZIO.succeed("\"" + preamble.name + "\""))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
+      (preamble => Right("\"" + preamble.name + "\""))
   })
 } yield {
   if actionNames.size > 0 then
@@ -124,29 +123,29 @@ def genActions(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
     ""
 }
 
-def genActionName(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genActionName(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actions <- genActions(actions)
 } yield {
   "type ActionName = " + actions + " | \"*\"\n"
 }
 
-def genTableAction(tables : Seq[Table], actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genTableAction(tables : Seq[Table], actions : Seq[P4InfoAction]) : Either[String, String] = for {
   tableActions <- mapM[Table,(String, Seq[ActionRef])](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
-      (preamble => ZIO.succeed(preamble.name, t.actionRefs))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
+      (preamble => Right(preamble.name, t.actionRefs))
   })
   actionIdNames <- mapM[P4InfoAction, (Int, String)](actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
-      (preamble => ZIO.succeed(preamble.id, preamble.name))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
+      (preamble => Right(preamble.id, preamble.name))
   })
   matchActionCases <- mapM(tableActions, (tn, ars) => {
     for {
       actionNames <- mapM(ars, ar => {
         actionIdNames.find((aid, an) => aid == ar.id) match
-          case None => ZIO.fail(new Exception("Failure: Table has invaild action reference."))
-          case Some((_, an)) => ZIO.succeed("\"" + an + "\"")
+          case None => Left("Failure: Table has invaild action reference.")
+          case Some((_, an)) => Right("\"" + an + "\"")
       })
     } yield {
       if actionNames.size > 0 then
@@ -161,11 +160,11 @@ def genTableAction(tables : Seq[Table], actions : Seq[P4InfoAction]) : RIO[Unit,
   + "    case \"*\" => \"*\"\n"
 }
 
-def genActionParams(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genActionParams(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actionParams <- mapM[P4InfoAction, String](actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
-      (preamble => ZIO.succeed({
+      (ifEmpty = Left("Failure: Action has empty preamble."))
+      (preamble => Right({
         val paramTypes = a.params.map(p => "(\"" + p.name + "\", ByteString)")
         if paramTypes.size > 0 then
           "    case \"" + preamble.name + "\" => (" + paramTypes.reduce((p1, p2) => p1 + ", " + p2) + ")"
@@ -184,7 +183,7 @@ def genActionParams(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
   + "    case \"*\" => \"*\"\n"
 }
 
-def genMatchTypes(p4info : P4Info) : RIO[Unit, String] = for {
+def genMatchTypes(p4info : P4Info) : Either[String, String] = for {
   tableMatchFields <- genTableMatchFields(p4info.tables)
   actionName <- genActionName(p4info.actions)
   tableAction <- genTableAction(p4info.tables, p4info.actions)
@@ -194,11 +193,11 @@ def genMatchTypes(p4info : P4Info) : RIO[Unit, String] = for {
 }
 
 // === Channel ===
-def genTableToProto(tables : Seq[Table]) : RIO[Unit, String] = for {
+def genTableToProto(tables : Seq[Table]) : Either[String, String] = for {
   tableCases <- mapM[Table, String](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
-      (preamble => ZIO.succeed("        case \"" + preamble.name + "\" => " + preamble.id))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
+      (preamble => Right("        case \"" + preamble.name + "\" => " + preamble.id))
   })
 } yield {
   "    val tableId =\n" +
@@ -212,22 +211,22 @@ def genTableToProto(tables : Seq[Table]) : RIO[Unit, String] = for {
   }
 }
 
-def genMatchFieldToProtoCase(table : String, mfs : Seq[MatchField]) : RIO[Unit, String] = for {
-  fieldsIndexed <- ZIO.succeed(mfs.zipWithIndex)
+def genMatchFieldToProtoCase(table : String, mfs : Seq[MatchField]) : Either[String, String] = for {
+  fieldsIndexed <- Right(mfs.zipWithIndex)
   caseVars <- mapM(fieldsIndexed, (mf,idx) => {
     mf.`match`.matchType match
-      case None => ZIO.fail(new Exception("Failure: MatchField has no match type."))
+      case None => Left("Failure: MatchField has no match type.")
       case Some(value) =>
         value match
-          case EXACT => ZIO.succeed("(_, t" + idx + ")")
-          case _ => ZIO.succeed("t" + idx)
+          case EXACT => Right("(_, t" + idx + ")")
+          case _ => Right("t" + idx)
   })
   caseResult <- mapM(fieldsIndexed, (mf,idx) => {
     mf.`match`.matchType match
-      case None => ZIO.fail(new Exception("Failure: MatchField has no match type."))
+      case None => Left("Failure: MatchField has no match type.")
       case Some(value) =>
         value match
-          case EXACT => ZIO.succeed("Seq(p4rtype.matchFieldToProto(" + mf.id + ", t" + idx + ".asInstanceOf[Exact]))")
+          case EXACT => Right("Seq(p4rtype.matchFieldToProto(" + mf.id + ", t" + idx + ".asInstanceOf[Exact]))")
           case _ => for {
               caseVarType <- genMatchFieldArg(mf)
             } yield {
@@ -241,10 +240,10 @@ def genMatchFieldToProtoCase(table : String, mfs : Seq[MatchField]) : RIO[Unit, 
     "        case (\"" + table + "\", _) => Seq.empty"
 }
 
-def genMatchFieldsToProto(tables : Seq[Table]) : RIO[Unit, String] = for {
+def genMatchFieldsToProto(tables : Seq[Table]) : Either[String, String] = for {
   tableMatches <- mapM[Table, String](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
       (preamble => genMatchFieldToProtoCase(preamble.name, t.matchFields))
   })
 } yield {
@@ -260,11 +259,11 @@ def genMatchFieldsToProto(tables : Seq[Table]) : RIO[Unit, String] = for {
   }
 }
 
-def genActionToProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genActionToProto(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actionCases <- mapM(actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
-      (preamble => ZIO.succeed("        case \"" + preamble.name + "\" => " + preamble.id))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
+      (preamble => Right("        case \"" + preamble.name + "\" => " + preamble.id))
   })
 } yield {
   "    val actionId =\n" +
@@ -278,10 +277,10 @@ def genActionToProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
   }
 }
 
-def genParamsToProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genParamsToProto(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   paramCases <- mapM(actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
       (preamble => {
         val paramsIndexed = a.params.zipWithIndex
         if paramsIndexed.size > 0 then
@@ -294,9 +293,9 @@ def genParamsToProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
           val paramCaseResult = paramsIndexed
             .map((p,idx) => "Seq(Param(paramId = " + p.id + ", value = p" + idx + "))")
             .reduce((p1, p2) => p1 + " ++ " + p2)
-          ZIO.succeed("        case (\"" + preamble.name + "\", (" + paramCaseVars + ") : (" + paramTypes + ")) => " + paramCaseResult)
+          Right("        case (\"" + preamble.name + "\", (" + paramCaseVars + ") : (" + paramTypes + ")) => " + paramCaseResult)
         else
-          ZIO.succeed("        case (\"" + preamble.name + "\", _) => Seq.empty")
+          Right("        case (\"" + preamble.name + "\", _) => Seq.empty")
       })
   })
 } yield {
@@ -311,7 +310,7 @@ def genParamsToProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
   }
 }
 
-def genToProto(p4info : P4Info) : RIO[Unit, String] = for {
+def genToProto(p4info : P4Info) : Either[String, String] = for {
   table <- genTableToProto(p4info.tables)
   matchFields <- genMatchFieldsToProto(p4info.tables)
   action <- genActionToProto(p4info.actions)
@@ -340,11 +339,11 @@ def genToProto(p4info : P4Info) : RIO[Unit, String] = for {
   "  )\n"
 }
 
-def genTableFromProto(tables : Seq[Table]) : RIO[Unit, String] = for {
+def genTableFromProto(tables : Seq[Table]) : Either[String, String] = for {
   tableCases <- mapM[Table, String](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
-      (preamble => ZIO.succeed("        case " + preamble.id + " => \"" + preamble.name + "\""))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
+      (preamble => Right("        case " + preamble.id + " => \"" + preamble.name + "\""))
   })
 } yield {
   "    val table =\n" +
@@ -358,15 +357,15 @@ def genTableFromProto(tables : Seq[Table]) : RIO[Unit, String] = for {
   "        case 0 => \"*\""
 }
 
-def genMatchFieldFromProtoCase(tableId : Int, mfs : Seq[MatchField]) : RIO[Unit, String] = for {
+def genMatchFieldFromProtoCase(tableId : Int, mfs : Seq[MatchField]) : Either[String, String] = for {
   matchFields <- mapM(mfs, mf => {
     mf.`match`.matchType.get match
-      case EXACT    => ZIO.succeed("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Exact(fm.fieldMatchType.exact.get.value))).get")
-      case LPM      => ZIO.succeed("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", LPM(fm.fieldMatchType.lpm.get.value, fm.fieldMatchType.lpm.get.prefixLen)))")
-      case RANGE    => ZIO.succeed("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Range(fm.fieldMatchType.range.get.low, fm.fieldMatchType.range.get.high)))")
-      case TERNARY  => ZIO.succeed("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Ternary(fm.fieldMatchType.ternary.get.value, fm.fieldMatchType.ternary.get.mask)))")
-      case OPTIONAL => ZIO.succeed("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Optional(fm.fieldMatchType.optional.get.value)))")
-      case _ => ZIO.fail(new Exception("Failure: Unknown match type."))
+      case EXACT    => Right("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Exact(fm.fieldMatchType.exact.get.value))).get")
+      case LPM      => Right("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", LPM(fm.fieldMatchType.lpm.get.value, fm.fieldMatchType.lpm.get.prefixLen)))")
+      case RANGE    => Right("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Range(fm.fieldMatchType.range.get.low, fm.fieldMatchType.range.get.high)))")
+      case TERNARY  => Right("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Ternary(fm.fieldMatchType.ternary.get.value, fm.fieldMatchType.ternary.get.mask)))")
+      case OPTIONAL => Right("te.`match`.find(_.fieldId == " + mf.id + ").map(fm => (\"" + mf.name + "\", Optional(fm.fieldMatchType.optional.get.value)))")
+      case _ => Left("Failure: Unknown match type.")
   })
 } yield {
   if matchFields.size > 0 then
@@ -375,10 +374,10 @@ def genMatchFieldFromProtoCase(tableId : Int, mfs : Seq[MatchField]) : RIO[Unit,
     "        case " + tableId + " => ()"
 }
 
-def genMatchFieldsFromProto(tables : Seq[Table]) : RIO[Unit, String] = for {
+def genMatchFieldsFromProto(tables : Seq[Table]) : Either[String, String] = for {
   tableMatches <- mapM[Table, String](tables, t => {
     t.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Table has empty preamble.")))
+      (ifEmpty = Left("Failure: Table has empty preamble."))
       (preamble => genMatchFieldFromProtoCase(preamble.id, t.matchFields))
   })
 } yield {
@@ -393,11 +392,11 @@ def genMatchFieldsFromProto(tables : Seq[Table]) : RIO[Unit, String] = for {
   "        case 0 => \"*\""
 }
 
-def genActionFromProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genActionFromProto(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actionCases <- mapM(actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
-      (preamble => ZIO.succeed("        case " + preamble.id + " => \"" + preamble.name + "\""))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
+      (preamble => Right("        case " + preamble.id + " => \"" + preamble.name + "\""))
   })
 } yield {
   "    val action =\n" +
@@ -411,8 +410,8 @@ def genActionFromProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
   "        case 0 => \"*\""
 }
 
-def genParamsFromProtoCase(actionId : Int, prms : Seq[Param]) : RIO[Unit, String] = for {
-  params <- mapM(prms, p => ZIO.succeed(
+def genParamsFromProtoCase(actionId : Int, prms : Seq[Param]) : Either[String, String] = for {
+  params <- mapM(prms, p => Right(
       "teParams.find(_.paramId == " + p.id + ").map(pm => (\"" + p.name + "\", pm.value)).get"
   ))
 } yield {
@@ -422,10 +421,10 @@ def genParamsFromProtoCase(actionId : Int, prms : Seq[Param]) : RIO[Unit, String
     "        case " + actionId + " => ()"
 }
 
-def genParamsFromProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
+def genParamsFromProto(actions : Seq[P4InfoAction]) : Either[String, String] = for {
   actionMatches <- mapM(actions, a => {
     a.preamble.fold
-      (ifEmpty = ZIO.fail(new Exception("Failure: Action has empty preamble.")))
+      (ifEmpty = Left("Failure: Action has empty preamble."))
       (preamble => genParamsFromProtoCase(preamble.id, a.params))
   })
 } yield {
@@ -440,7 +439,7 @@ def genParamsFromProto(actions : Seq[P4InfoAction]) : RIO[Unit, String] = for {
   "        case 0 => \"*\""
 }
 
-def genFromProto(p4info : P4Info) : RIO[Unit, String] = for {
+def genFromProto(p4info : P4Info) : Either[String, String] = for {
   table <- genTableFromProto(p4info.tables)
   matchFields <- genMatchFieldsFromProto(p4info.tables)
   action <- genActionFromProto(p4info.actions)
@@ -464,7 +463,7 @@ def genFromProto(p4info : P4Info) : RIO[Unit, String] = for {
   "    ).asInstanceOf[p4rtype.TableEntry[TM, TA, TP, XN, XA]]\n"
 }
 
-def genChannel(p4info : P4Info) : RIO[Unit, String] = for {
+def genChannel(p4info : P4Info) : Either[String, String] = for {
   toProto <- genToProto(p4info)
   fromProto <- genFromProto(p4info)
 } yield {
@@ -473,7 +472,7 @@ def genChannel(p4info : P4Info) : RIO[Unit, String] = for {
   fromProto
 }
 // === `connect` API ===
-def genConnect(p4info : P4Info) : RIO[Unit, String] = ZIO.succeed(
+def genConnect(p4info : P4Info) : Either[String, String] = Right(
   "/** Connect to a P4Runtime server.\n" +
   "  * @param id The device ID, which is assigned by the controller (i.e. the caller), and should be unique for each controller.\n" +
   "  * @param ip IP address of the target device.\n" +
@@ -497,7 +496,7 @@ def genConnect(p4info : P4Info) : RIO[Unit, String] = ZIO.succeed(
   "  Chan(id, stub, channel)\n\n"
 )
 
-def genP4Info(p4info : P4Info) : RIO[Unit, String] =
+def genP4Info(p4info : P4Info) : Either[String, String] =
   for {
     imports <- genImports()
     matchTypes <- genMatchTypes(p4info)
@@ -510,28 +509,39 @@ def genP4Info(p4info : P4Info) : RIO[Unit, String] =
     connect + "\n"
   }
 
-object parseP4info extends ZIOAppDefault {
-  def run =
-    val layer : ZLayer[Any, Throwable, Unit] = ZLayer.succeed(())
-    layer { for {
-      args <- getArgs
-      p4info <- {
-        if args.length == 2 then
-          val lines = fromFile(System.getProperty("user.dir") + "/" + args(0)).mkString
-          val parser = scalapb.json4s.Parser()
-          val p4info : P4Info = parser.fromJsonString[P4Info](lines)
-          ZIO.succeed(p4info)
-        else
-          ZIO.fail(new Exception("usage: sbt \"runMain parseP4info <p4info.json> <package-name>\""))
-      }
-      output <- genP4Info(p4info)
-      _ <- ZStream
-        .fromIterable("package " + args(1) + "\n\n" + output)
-        .run[Any, Throwable, Unit](
-          ZSink
-            .fromOutputStream(java.lang.System.out)
-            .contramap[Char](_.toByte)
-            .as(())
-        )
-    } yield () }
+/** Library entry point: p4info JSON in, Scala 3 source out.
+  *
+  * This is the API a build tool should call. `typegen` previously only existed
+  * as a main that printed to stdout, which forced consumers (e.g. QuackMPP's
+  * Mill build) to shell out and redirect. Callers that want the types on disk
+  * can write the returned String wherever they like.
+  *
+  * @param p4infoJson the contents of a p4info file in the JSON form emitted by
+  *                   `p4c --target bmv2 --arch v1model --p4runtime-files`
+  * @param packageName the package to declare in the generated source
+  * @return the generated Scala source, or a description of what went wrong
+  */
+def generate(p4infoJson : String, packageName : String) : Either[String, String] =
+  for {
+    p4info <-
+      try Right(scalapb.json4s.Parser().fromJsonString[P4Info](p4infoJson))
+      catch case e : Throwable => Left("Failure: could not parse p4info JSON: " + e.getMessage)
+    output <- genP4Info(p4info)
+  } yield "package " + packageName + "\n\n" + output
+
+object parseP4info {
+  def main(args : Array[String]) : Unit =
+    if args.length != 2 then
+      System.err.println("usage: sbt \"runMain parseP4info <p4info.json> <package-name>\"")
+      System.exit(1)
+    else
+      val source =
+        try Right(fromFile(System.getProperty("user.dir") + "/" + args(0)).mkString)
+        catch case e : Throwable => Left("Failure: could not read " + args(0) + ": " + e.getMessage)
+
+      source.flatMap(generate(_, args(1))) match
+        case Right(out) => print(out)
+        case Left(err)  =>
+          System.err.println(err)
+          System.exit(1)
 }

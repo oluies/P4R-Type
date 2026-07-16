@@ -96,7 +96,16 @@ custom `repositories` task (coursier's documented defaults say yes; untested her
 
 ---
 
-## Prompt 4 — Decide whether zio is still worth a dependency
+## ~~Prompt 4 — Decide whether zio is still worth a dependency~~ — DONE
+
+Verdict: not worth it. ZIO was pure ceremony in a synchronous batch program and
+has been removed entirely (`zio` + `zio-streams`), with `generate` added as a
+library entry point. Emitted types verified byte-identical. See `UPGRADE.md` §4.
+Original prompt kept below for context.
+
+---
+
+## Prompt 4 (original) — Decide whether zio is still worth a dependency
 
 > `zio-grpc` was removed during the upgrade (`UPGRADE.md` §4) — it has no sbt 2
 > compatible codegen, and its only uses were three unused imports.

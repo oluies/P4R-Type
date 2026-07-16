@@ -1,7 +1,6 @@
 val scala3Version = "3.8.4"
 
 val grpcVersion   = "1.82.2"
-val zioVersion    = "2.1.26"
 val json4sVersion = "1.0.0-alpha.1"
 val munitVersion  = "1.3.4"
 
@@ -42,8 +41,6 @@ lazy val root = project
       "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
       "com.thesamet.scalapb" %% "scalapb-json4s"       % json4sVersion,
       "io.grpc"               % "grpc-netty"           % grpcVersion,
-      "dev.zio"              %% "zio"                  % zioVersion,
-      "dev.zio"              %% "zio-streams"          % zioVersion,
       "org.scalameta"        %% "munit"                % munitVersion % Test
     )
   )
