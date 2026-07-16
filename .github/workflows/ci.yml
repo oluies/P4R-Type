@@ -62,55 +62,43 @@ jobs:
   p4info-fixture:
     name: p4info fixture matches real p4c
     runs-on: ubuntu-latest
-    # p4lang publishes linux/amd64 only; ubuntu-latest is amd64, so this runs
-    # natively here. On an arm64 dev machine it needs emulation — see ARCHITECTURE.md.
-    container: p4lang/p4c:latest
+
+    # NOT a `container:` job, deliberately. p4lang/p4c ships no git, so
+    # actions/checkout inside it cannot clone and falls back to downloading the
+    # repo tarball over REST — which failed 3 runs out of 4 with GitHub's HTML
+    # error page ("Downloading the archive" -> <!DOCTYPE html>). Checking out on
+    # the runner (which has git) and invoking p4c via `docker run` keeps the
+    # fragile path out of the loop entirely, and mirrors what container/p4rt.sh
+    # does locally.
     steps:
       - uses: actions/checkout@v7
 
-      # `shell: bash` on purpose: inside a container job GitHub defaults to
-      # `sh -e {0}`, and p4lang/p4c's sh is dash — which rejects `set -o pipefail`
-      # with "Illegal option -o pipefail" before running a single line.
-      #
-      # Paths are relative to the workspace root — this step sets no
-      # working-directory, so that is already its cwd. Two earlier versions got
-      # this wrong in different ways, and both are worth not repeating:
-      #
-      #   `../../../` from working-directory examples/src/main/p4 is one level
-      #   short of P4R-Type/, so diff never found the fixture — and reported it
-      #   as *drift*, the exact misleading failure this job's predecessor was
-      #   rewritten to avoid.
-      #
-      #   `${{ github.workspace }}` is evaluated on the host, but this is a
-      #   container job: the runner mounts /home/runner/work at /__w, so host
-      #   paths are not the container's paths. It happens to work (the runner
-      #   translates path-valued env vars on injection), but it depends on that
-      #   translation, and `${{ }}` expansion cannot be checked locally at all.
-      #
-      # Workspace-relative paths are immune to both.
+      # p4lang publishes linux/amd64 only; ubuntu-latest is amd64, so this runs
+      # natively. On an arm64 dev machine it needs emulation — see ARCHITECTURE.md §5.
       - name: Recompile the P4 and compare the emitted p4info
         shell: bash
         env:
           FIXTURE: P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
-          P4SRC: P4R-Type/examples/src/main/p4
+          FRESH: P4R-Type/_fresh.p4info.json
         run: |
           set -euo pipefail
 
           test -f "$FIXTURE" || { echo "::error::fixture missing at $(pwd)/$FIXTURE"; exit 1; }
-          test -f "$P4SRC/quackmpp.p4" || { echo "::error::P4 source missing at $(pwd)/$P4SRC"; exit 1; }
+          test -f P4R-Type/examples/src/main/p4/quackmpp.p4 || { echo "::error::P4 source missing"; exit 1; }
 
-          FIXTURE="$(pwd)/$FIXTURE"   # absolute before the cd below
-          cd "$P4SRC"
-          if ! p4c --target bmv2 --arch v1model \
-                   --p4runtime-files /tmp/fresh.p4info.json -o /tmp quackmpp.p4; then
+          # Write into the mounted tree, not the container's /tmp, so the result
+          # survives the run.
+          if ! docker run --rm -v "$PWD/P4R-Type:/proj" -w /proj/examples/src/main/p4 \
+                 p4lang/p4c:latest \
+                 sh -c 'p4c --target bmv2 --arch v1model --p4runtime-files /proj/_fresh.p4info.json -o /tmp quackmpp.p4'; then
             echo "::error::p4c failed to compile quackmpp.p4 — this is a compile error, not drift."
             exit 1
           fi
 
-          if ! diff -u "$FIXTURE" /tmp/fresh.p4info.json; then
+          if ! diff -u "$FIXTURE" "$FRESH"; then
             echo "::error::p4c's p4info no longer matches the committed fixture (diff above)."
-            echo "::error::Copy /tmp/fresh.p4info.json over src/test/resources/quackmpp_exchange.p4info.json,"
-            echo "::error::regenerate src/test/scala/quackmpp_exchange.scala, and re-run the tests."
+            echo "::error::Run container/p4rt.sh gen, regenerate src/test/scala/quackmpp_exchange.scala,"
+            echo "::error::and re-run the tests."
             exit 1
           fi
-          echo "p4info fixture matches p4c $(p4c --version | head -1)"
+          echo "p4info fixture matches p4c $(docker run --rm p4lang/p4c:latest p4c --version | head -1)"

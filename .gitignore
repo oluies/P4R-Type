@@ -34,3 +34,4 @@ project/metals.sbt
 P4R-Type/examples/src/main/p4/quackmpp.json
 P4R-Type/examples/src/main/p4/quackmpp.p4info.json
 P4R-Type/examples/src/main/p4/quackmpp.vm-era.p4info.json
+P4R-Type/_fresh.p4info.json
