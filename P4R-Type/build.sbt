@@ -4,6 +4,8 @@ val grpcVersion   = "1.82.2"
 val protobufVersion = "4.35.0"   // must match what scalapb-runtime pulls
 val munitVersion  = "1.3.4"
 
+// The library. This is the only thing published, and it must contain only the
+// P4R-Type API + generated P4Runtime bindings + typegen — see `examples` below.
 lazy val root = project
   .in(file("."))
   .settings(
@@ -50,4 +52,32 @@ lazy val root = project
       "io.grpc"               % "grpc-netty"           % grpcVersion,
       "org.scalameta"        %% "munit"                % munitVersion % Test
     )
+  )
+
+/** The examples, as a separate project that is never published.
+  *
+  * They used to live in `src/main/scala/examples/` and therefore shipped inside
+  * the library jar: `bridge`, `firewall`, `forward_c1`, `forward_c2`,
+  * `loadbalancer`, `p4rtypeTest` and `router` declare no package, so they landed
+  * in the **default package** at the jar root (35 class/tasty entries), and the
+  * `config*` packages are typegen output for a specific p4info — someone else's
+  * types, shipped to every consumer. Both are collision hazards for anything
+  * embedding this library (QuackMPP).
+  *
+  * They stay compiled — CI runs `examples/compile`, so breakage is still caught —
+  * but `publish / skip` keeps them out of the artifact. They cannot simply move
+  * to test scope: they are documented entry points in README.md and need the
+  * mininet VM to run.
+  *
+  * Deliberately NOT aggregated by `root`: `root.aggregate(examples)` combined
+  * with `examples.dependsOn(root)` hangs sbt 2 during project loading.
+  */
+lazy val examples = project
+  .in(file("examples"))
+  .dependsOn(root)
+  .settings(
+    name           := "p4rt-scala-examples",
+    scalaVersion   := scala3Version,
+    publish / skip := true,
+    Compile / run / fork := true
   )

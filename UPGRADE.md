@@ -393,18 +393,18 @@ The published jar was inspected rather than assumed — ScalaPB writes into
 | contents | count | |
 | --- | --- | --- |
 | `p4rtype/*` (the hand-written API) | 29 | wanted |
-| `p4/v1/p4runtime/*` (generated) | 417 | wanted |
-| `p4/config/v1/p4info/*` (generated) | 175 | wanted |
-| `typegen/*` (CLI + `generate`) | — | wanted |
-| **default-package classes at the jar root** | **35** | **unwanted — see §8.10** |
-| `config1/`, `config2/`, `config1_lb/`, `config2_nat/`, `config2_new/` | — | unwanted — see §8.10 |
+| `typegen/*` (CLI + `generate`) | 7 | wanted |
+| `p4/v1/p4runtime/*` (generated) | 444 | wanted |
+| `p4/config/v1/p4info/*` (generated) | 200 | wanted |
+| default-package classes at the jar root | **0** | was 35 — fixed |
+| `config1/`, `config2/`, `config1_lb/`, `config2_nat/`, `config2_new/` | **0** | was shipped — fixed |
 
-⚠️ **This table is not a clean bill of health.** The jar also ships every example:
-`bridge`, `firewall`, `forward_c1`, `forward_c2`, `loadbalancer`, `p4rtypeTest` and
-`router` compile to the **default package** (35 `.class`/`.tasty` entries at the jar
-root), and the `config*` packages are typegen output for someone else's p4info —
-the same category as the `quackmpp_exchange` fixture that was moved to test scope.
-Tracked as blocker §8.10.
+The jar previously shipped every example: `bridge`, `firewall`, `forward_c1`,
+`forward_c2`, `loadbalancer`, `p4rtypeTest` and `router` declare no package, so
+they landed in the **default package** (35 `.class`/`.tasty` entries at the jar
+root), and the `config*` packages are typegen output for a specific p4info — the
+same category as the `quackmpp_exchange` fixture. The examples are now a separate,
+never-published project (§8.10), and the counts above are verified, not assumed.
 
 Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"..."`,
 so QuackMPP depends on it via:
@@ -459,20 +459,19 @@ verified free of `quackmpp/` entries.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
-10. **The published jar ships the examples, 35 of them in the default package.**
-    `bridge`, `firewall`, `forward_c1`, `forward_c2`, `loadbalancer`, `p4rtypeTest`
-    and `router` declare no package, so they land at the jar root; the `config*`
-    packages are typegen output for someone else's p4info. Both are a collision
-    hazard for anything embedding this library, and the default-package ones are
-    the same defect class as the `typegen` bug fixed in §4 — found only because
-    that fix prompted an audit. Moving the fixture out of `src/main/` (§7) fixed
-    one instance of this and missed ten.
+10. ~~**The published jar ships the examples, 35 of them in the default package.**~~
+    Fixed. `src/main/scala/examples/` is now the separate `examples` project
+    (`examples/src/main/scala/`) with `publish / skip := true`, so the jar contains
+    0 default-package entries and no `config*` packages — verified. The examples
+    are still compiled (CI runs `examples/compile`) and still runnable via
+    `sbt "examples/runMain <name>"`.
 
-    Not fixed here because the right fix is structural and touches documented
-    workflows: move `src/main/scala/examples/` into its own unpublished sbt
-    subproject (`README.md` documents `runMain p4rtypeTest` etc., and the examples
-    need the mininet VM, so they cannot simply move to test scope). Worth doing
-    before QuackMPP depends on the artifact.
+    Two notes for anyone touching this. `root` deliberately does **not**
+    `.aggregate(examples)`: combined with `examples.dependsOn(root)` that hangs
+    sbt 2 during project loading, which is why CI names `examples/compile`
+    explicitly. And this was the same defect class as the `typegen` empty-package
+    bug in §4 — moving the fixture out of `src/main/` (§7) fixed one instance and
+    missed ten, because the check grepped the jar only for `quackmpp/`.
 9. **If QuackMPP uses packet replication, read §5's `Replica` note first.** An MPP
    exchange fabric plausibly wants multicast/clone to fan packets across workers,
    and that is the one place the v1.5.0 refresh bites:

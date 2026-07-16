@@ -40,8 +40,11 @@ jobs:
       # commands must be quoted and separated with ';'.
       # `testFull` (not `test`) is required: sbt 2's `test` is incremental and
       # will report success having run zero tests.
+      # `examples/compile` is explicit: the examples are a separate project that
+      # root deliberately does not aggregate (see build.sbt), so a bare `compile`
+      # would not build them and CI would miss breakage there.
       - name: Compile and test
-        run: sbt -batch "compile; Test/compile; testFull"
+        run: sbt -batch "compile; Test/compile; testFull; examples/compile"
 
       # The typegen drift check used to live here as a shell pipeline that ran
       # `runMain parseP4info`, sed'd the types out of sbt's log and diffed them.
