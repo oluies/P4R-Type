@@ -1,7 +1,7 @@
 val scala3Version = "3.8.4"
 
 val grpcVersion   = "1.82.2"
-val json4sVersion = "1.0.0-alpha.1"
+val protobufVersion = "4.35.0"   // must match what scalapb-runtime pulls
 val munitVersion  = "1.3.4"
 
 lazy val root = project
@@ -15,13 +15,12 @@ lazy val root = project
     version      := "0.1.0-SNAPSHOT",
     scalaVersion := scala3Version,
 
-    // scalapb-json4s only publishes 1.0.0-alpha.1 on the 1.0 line and pins
-    // scalapb-runtime 1.0.0-alpha.1, while sbt 2 forces scalapb >= 1.0.0-alpha.5.
-    // Scoped to that one artifact on purpose: a blanket `evictionErrorLevel :=
-    // Level.Warn` would also silence every future binary-incompatible eviction
-    // (grpc, zio, protobuf-java) that Scala Steward bumps into the build.
-    libraryDependencySchemes +=
-      "com.thesamet.scalapb" %% "scalapb-runtime" % VersionScheme.Always,
+    // parseP4info calls System.exit on its error paths, and sbt's trapExit needs
+    // a SecurityManager, which JDK 24+ refuses to install — so unforked, that
+    // exit runs in sbt's own JVM. In practice sbt 2 survives it (it reports
+    // "nonzero exit code returned from runner" and carries on), but a CLI that
+    // exits should not be sharing a JVM with the build tool on trust.
+    Compile / run / fork := true,
 
     // Silence warnings due to ScalaPB-generated code
     scalacOptions ++= Seq(
@@ -36,10 +35,18 @@ lazy val root = project
       scalapb.gen(grpc = true) -> (Compile / sourceManaged).value / "scalapb"
     ),
 
+    // QuackMppTypegenSuite's drift check reads the committed fixture as text via
+    // System.getProperty("user.dir"), which sbt sets to the project base
+    // directory only for *unforked* tests. Pin fork off so that stays true —
+    // this is already the default, but the test depends on it, so it is stated
+    // rather than assumed. (Putting the test source dir on the resource
+    // classpath instead does not work: sbt excludes *.scala from resources.)
+    Test / fork := false,
+
     libraryDependencies ++= Seq(
       "com.thesamet.scalapb" %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
       "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-      "com.thesamet.scalapb" %% "scalapb-json4s"       % json4sVersion,
+      "com.google.protobuf"   % "protobuf-java-util"   % protobufVersion,
       "io.grpc"               % "grpc-netty"           % grpcVersion,
       "org.scalameta"        %% "munit"                % munitVersion % Test
     )

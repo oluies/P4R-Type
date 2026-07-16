@@ -1,0 +1,13 @@
+{
+ "pkgInfo": { "arch": "v1model" },
+ "tables": [ { "preamble": { "id": 33554433, "name": "T.t", "alias": "t" },
+   "matchFields": [ { "id": 1, "name": "meta.bucket", "bitwidth": 16, "matchType": "EXACT" } ],
+   "actionRefs": [ { "id": 16777217 } ], "size": "1024" } ],
+ "actions": [ { "preamble": { "id": 16777217, "name": "T.a", "alias": "a" } } ],
+ "actionProfiles": [ {
+   "preamble": { "id": 285217164, "name": "T.ap", "alias": "ap" },
+   "tableIds": [ 33554433 ], "withSelector": true, "size": "128", "maxGroupSize": 16,
+   "selectorSizeSemantics": "SUM_OF_MEMBERS"
+ } ],
+ "typeInfo": {}
+}

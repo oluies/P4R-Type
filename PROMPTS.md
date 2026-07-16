@@ -23,10 +23,18 @@ custom `repositories` task (coursier's documented defaults say yes; untested her
 ## ~~Prompt 2 — Refresh the P4Runtime protos to v1.5.0~~ — DONE
 
 All four protos are at v1.5.0. Zero source changes needed; `bucket` fixture
-byte-identical; 7/7 green. Service RPC set unchanged, p4info purely additive,
-`Replica.egress_port` moved into a `oneof` (wire-compatible, API-changing, unused
-here). v1.5.0 is safe against bmv2 (which is pinned pre-v1.4.0) — no v1.4.1 pin
-needed. See `UPGRADE.md` §5 and blocker §8.9. Original prompt kept below.
+byte-identical; 8/8 green. Service RPC set unchanged.
+
+Two shape changes, one benign and one not: `Replica.egress_port` moved into a
+`oneof` but kept field 1's number and type (wire-compatible); and
+`ActionProfile.selector_size_semantics` went from an enum at field 6 to a `oneof`
+whose arm reuses field 6 as a *message* — varint to length-delimited, genuinely
+**wire-incompatible**. So p4info is NOT "purely additive" (an earlier revision of
+this file and of UPGRADE.md said so; it was wrong, see UPGRADE.md §5).
+
+v1.5.0 is still the right default and pinning v1.4.1 would not help (the change
+landed in v1.4.0) — but it is only safe where action-profile selectors are unused,
+which covers every fixture here. See `UPGRADE.md` §5 and blockers §8.9/§8.10.
 
 ---
 
@@ -61,7 +69,19 @@ needed. See `UPGRADE.md` §5 and blocker §8.9. Original prompt kept below.
 
 ---
 
-## Prompt 3 — Escape the pre-release dependency chain (the important one)
+## ~~Prompt 3 — Escape the pre-release dependency chain~~ — DONE
+
+scalapb-json4s removed (replaced by protobuf-java-util's JsonFormat via
+DynamicMessage) — verified byte-identical across all six p4info fixtures. That
+deleted the eviction override and the cross-alpha gamble; the build now resolves
+with zero conflict warnings. Two pre-release *versions* remain (sbt-protoc
+1.1.0-RC2, ScalaPB 1.0.0-alpha.6), both forced by sbt 2 needing _3 build jars, and
+nothing newer exists on Maven. Recommendation: stay on sbt 2.0.2; sbt 1.12.13
+remains a clean fallback. See UPGRADE.md §3.
+
+---
+
+## Prompt 3 (original) — Escape the pre-release dependency chain
 
 > Per `UPGRADE.md` §3, building P4R-Type on **sbt 2.0.2** currently requires four
 > pre-release artifacts and one safety override:

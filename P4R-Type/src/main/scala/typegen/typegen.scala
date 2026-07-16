@@ -1,3 +1,10 @@
+// Without this, every top-level definition here — including `generate` — lands in
+// the empty package and compiles to typegen$package.class at the jar root.
+// Members of the empty package cannot be imported from a named package, so no
+// downstream build (QuackMPP's Mill build compiles into `build`/`millbuild`)
+// could ever call the library entry point this file exists to expose.
+package typegen
+
 import Console.print
 import scala.io.Source._
 import p4.v1.p4runtime.*
@@ -22,8 +29,6 @@ import com.google.protobuf.CodedOutputStream
 import java.io.OutputStream
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
-import scalapb.json4s.{JsonFormat, Parser}
-import org.json4s.Reader
 import p4.config.v1.p4info.{Action => P4InfoAction, _}
 import p4.config.v1.p4info.MatchField.MatchType.EXACT
 import p4.config.v1.p4info.MatchField.MatchType.LPM
@@ -521,18 +526,34 @@ def genP4Info(p4info : P4Info) : Either[String, String] =
   * @param packageName the package to declare in the generated source
   * @return the generated Scala source, or a description of what went wrong
   */
+/** Parses p4c's p4info JSON into the ScalaPB `P4Info` message.
+  *
+  * Uses protobuf-java's JsonFormat (the reference implementation of the protobuf
+  * JSON mapping p4c emits) via a DynamicMessage built from ScalaPB's own
+  * javaDescriptor, then re-parses the binary form into the Scala message. This
+  * deliberately avoids scalapb-json4s, whose only 1.0-line release
+  * (1.0.0-alpha.1) pins scalapb-runtime 1.0.0-alpha.1 and forced a cross-alpha
+  * eviction override on the whole build. protobuf-java-util is a plain Java
+  * artifact with no Scala cross-version and a stable release matching the
+  * protobuf-java that scalapb-runtime already pulls. See UPGRADE.md §3.
+  */
+private def parseP4infoJson(p4infoJson : String) : Either[String, P4Info] =
+  try
+    val builder = com.google.protobuf.DynamicMessage.newBuilder(P4Info.javaDescriptor)
+    com.google.protobuf.util.JsonFormat.parser().merge(p4infoJson, builder)
+    Right(P4Info.parseFrom(builder.build().toByteArray))
+  catch case e : Throwable => Left("Failure: could not parse p4info JSON: " + e.getMessage)
+
 def generate(p4infoJson : String, packageName : String) : Either[String, String] =
   for {
-    p4info <-
-      try Right(scalapb.json4s.Parser().fromJsonString[P4Info](p4infoJson))
-      catch case e : Throwable => Left("Failure: could not parse p4info JSON: " + e.getMessage)
+    p4info <- parseP4infoJson(p4infoJson)
     output <- genP4Info(p4info)
   } yield "package " + packageName + "\n\n" + output
 
 object parseP4info {
   def main(args : Array[String]) : Unit =
     if args.length != 2 then
-      System.err.println("usage: sbt \"runMain parseP4info <p4info.json> <package-name>\"")
+      System.err.println("usage: sbt \"runMain typegen.parseP4info <p4info.json> <package-name>\"")
       System.exit(1)
     else
       val source =

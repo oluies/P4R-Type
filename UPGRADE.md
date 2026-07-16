@@ -5,7 +5,7 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 binding library for **QuackMPP**.
 
 Verified on **JDK 25.0.3 / sbt 2.0.2 / Scala 3.8.4**, cold action cache:
-`compile` and `testFull` both green, 4/4 tests passing.
+`compile` and `testFull` both green, 8/8 tests passing.
 
 ---
 
@@ -28,15 +28,16 @@ So the upgrade was not optional — there was no working baseline to regress aga
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
 | ScalaPB compilerplugin | 0.11.11 | **1.0.0-alpha.6** |
 | scalapb-runtime / -grpc | 0.11.11 | **1.0.0-alpha.6** |
-| scalapb-json4s | 0.12.0 | **1.0.0-alpha.1** |
+| scalapb-json4s | 0.12.0 | **removed** — replaced by protobuf-java-util (§3) |
 | zio-grpc-codegen | 0.6.0-test4 | **removed** (see §4) |
 | zio | 2.0.0 | **removed** (see §4) |
 | zio-streams | (transitive) | **removed** (see §4) |
 | grpc-netty | 1.41.0 (and 1.41.0 again) | **1.82.2** |
 | protobuf-java | (via ScalaPB 0.11.11) | **4.35.0** (via ScalaPB alpha.6) |
+| protobuf-java-util | — | **4.35.0** (new: p4info JSON parsing) |
 | munit | 0.7.29 | **1.3.4** |
 | sbt-bloop (`project/metals.sbt`) | 1.5.8, committed | **removed + gitignored** |
-| P4Runtime protos | ~v1.3-era | **unchanged — see §5** |
+| P4Runtime protos | ~v1.3-era | **v1.5.0** (see §5) |
 
 `build.sbt` also declared `PB.targets`, `grpc-netty`, and `scalapb-runtime-grpc`
 twice each; the file has been deduplicated.
@@ -61,8 +62,8 @@ and deleting the committed generated tree. To confirm nothing had been
 hand-edited, the regenerated file set was diffed against the committed one:
 **119 generated vs 120 committed, identical names, the only difference being
 `ZioP4Runtime.scala`** — the zio-grpc stub that is no longer generated (§4).
-Nothing was lost. (The build now generates 117: `Any.scala` / `AnyProto.scala`
-also dropped out, see below.)
+Nothing was lost. (The build now generates 120: `Any.scala` / `AnyProto.scala`
+dropped out — see below — and the v1.5.0 refresh added five, see §5.)
 
 Consequence: ScalaPB/gRPC/proto versions are now *real* inputs. Bumping them
 actually changes the generated API, and `.proto` edits now take effect.
@@ -90,29 +91,64 @@ forces a chain of pre-release versions:
   [error] Conflicting cross-version suffixes in: com.thesamet.scalapb:protoc-bridge
   ```
   Only **1.0.0-alpha.5+** switched to `protoc-gen_3` / `protoc-bridge_3` 0.9.10.
-- `scalapb-json4s` — required by `typegen` to parse p4info JSON — only publishes
-  **1.0.0-alpha.1** on the 1.0 line, and it pins `scalapb-runtime` 1.0.0-alpha.1.
-  Against runtime alpha.6 this is an eviction sbt treats as an error, so the build
-  declares a version scheme for that one artifact:
-  ```scala
-  libraryDependencySchemes +=
-    "com.thesamet.scalapb" %% "scalapb-runtime" % VersionScheme.Always
-  ```
-  This is deliberately scoped rather than a blanket `evictionErrorLevel :=
-  Level.Warn`, which would also silence every *future* binary-incompatible
-  eviction (grpc, zio, protobuf-java) that Scala Steward bumps into the build —
-  precisely the class of problem eviction errors exist to catch.
+- ~~`scalapb-json4s`~~ — **removed**, see below.
 
-  **This is the main fragility of the sbt 2 choice.** It is not theoretical
-  hand-waving: it is a real cross-alpha binary-compatibility gamble. In practice
-  the path we exercise works — `parseP4info` parses a p4c v1model p4info and emits
-  correct types (§6) — but the rest of the json4s API surface is unverified.
+### scalapb-json4s is gone, and with it the eviction override
 
-**If this fragility is unacceptable, sbt 1.12.13 is the escape hatch**, and every
-artifact above resolves stable there: sbt-protoc 1.0.8, compilerplugin 0.11.20,
-scalapb-runtime 0.11.20, scalapb-json4s 0.12.2, zio-grpc 0.6.3 — all consistently
-on `protoc-bridge_2.12`. sbt 1.12.13 also fixes the JDK 25/26 breakage. The only
-thing lost is sbt 2 itself.
+`scalapb-json4s` was the worst of the four: the 1.0 line has exactly one release
+(**1.0.0-alpha.1**), which pins `scalapb-runtime` 1.0.0-alpha.1 against the
+alpha.6 the rest of the build needs. That required a `libraryDependencySchemes`
+override just to resolve, and amounted to a cross-alpha binary-compatibility
+gamble on every json4s call.
+
+It was used in exactly one place — parsing p4info JSON in `generate`. That is now
+done with **protobuf-java's `JsonFormat`** (the reference implementation of the
+protobuf JSON mapping p4c emits) through a `DynamicMessage` built from ScalaPB's
+own `javaDescriptor`, then re-parsed into the Scala message:
+
+```scala
+val builder = DynamicMessage.newBuilder(P4Info.javaDescriptor)
+JsonFormat.parser().merge(p4infoJson, builder)
+P4Info.parseFrom(builder.build().toByteArray)
+```
+
+`protobuf-java-util` is a plain Java artifact — no Scala cross-version, no alpha —
+and 4.35.0 exactly matches the protobuf-java `scalapb-runtime` already pulls.
+
+Verified equivalent, not assumed: typegen output was generated for **all six**
+p4info fixtures under both parsers and compared. Byte-for-byte identical in every
+case, including the ternary/action-profile-heavy `config2_nat`. The eviction
+override is deleted and the build now resolves with **zero conflict warnings**.
+
+### What pre-release surface remains
+
+Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
+
+| artifact | version | why |
+| --- | --- | --- |
+| `sbt-protoc` | 1.1.0-RC2 | no stable sbt 2 release exists at all |
+| ScalaPB `compilerplugin` / `scalapb-runtime` | 1.0.0-alpha.6 | 0.11.x pulls `protoc-bridge_2.13`, which collides with sbt-protoc's `_3` |
+
+Re-checked on Maven at the time of writing: nothing newer exists on either
+(`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
+1.0.0-alpha.6). sbt itself is still 2.0.2.
+
+### Recommendation: stay on sbt 2.0.2
+
+The fragility that justified the escape hatch is gone. What is left is two
+pre-release *versions* rather than an unresolvable *conflict*: no override, no
+eviction warning, no cross-alpha gamble — and 8/8 tests green on a cold JDK 25
+build.
+
+**sbt 1.12.13 remains a clean fallback** and is worth taking if the RC/alpha
+versions are themselves a policy problem (e.g. for a published artifact others
+depend on). Everything resolves stable there: sbt-protoc 1.0.8, compilerplugin
+0.11.20, scalapb-runtime 0.11.20, all on `protoc-bridge_2.12` — and the
+protobuf-java-util parser change above is orthogonal, so it carries over. The
+library API is identical either way; only `project/` changes.
+
+Scala Steward is configured to move the two pins forward as soon as
+`sbt-protoc` 1.1.0 and ScalaPB 1.0.0 go final, which is the real exit.
 
 ## 4. zio-grpc was removed
 
@@ -168,9 +204,11 @@ What changed, checked field-by-field rather than assumed:
 - **The service contract is unchanged.** Same six RPCs (`Write`, `Read`,
   `SetForwardingPipelineConfig`, `GetForwardingPipelineConfig`, `StreamChannel`,
   `Capabilities`) with identical signatures.
-- **`p4info.proto` is purely additive** — no field removed, none renumbered. New:
-  `PlatformProperties` + `PkgInfo.platform_properties` (v1.4.0), `TableActionCall`,
-  `Table.initial_default_action`, `ActionProfile.max_member_weight`.
+- **`p4info.proto` is additive except for one wire-incompatible change** —
+  `ActionProfile.selector_size_semantics`. See "The one real incompatibility"
+  below. Otherwise new: `PlatformProperties` + `PkgInfo.platform_properties`
+  (v1.4.0), `TableActionCall`, `Table.initial_default_action`,
+  `ActionProfile.weights_disallowed`.
 - **`p4runtime.proto` is additive with one API-shape change**: `TableEntry.is_const`,
   `MeterConfig.eburst`, `Replica.backup_replicas`/`BackupReplica` (v1.5.0), and —
   the one to know about — `Replica.egress_port` is now inside a `oneof port_kind`
@@ -192,18 +230,66 @@ What changed, checked field-by-field rather than assumed:
   (a sealed oneof) rather than a flat `egressPort`. Harmless here — P4R-Type does
   not reference `Replica`, multicast, or clone sessions anywhere — but see §8.9.
 
-### Is v1.5.0 safe against bmv2?
+### The one real incompatibility: `ActionProfile.selector_size_semantics`
 
-Yes, and there is no need to pin v1.4.1. bmv2's `simple_switch_grpc` gets its
-P4Runtime from PI, which vendors `p4lang/p4runtime` as a git submodule pinned at
-commit `ec4eb5e` (2024-08-18) — *before* the v1.4.0 release (2024-09-13). So bmv2
-effectively speaks ~v1.3.0-era P4Runtime, i.e. **our client protos are now ahead of
-the switch**.
+v1.4.0 replaced this enum field with a `oneof` that **reuses field number 6 with a
+different wire type**:
 
-That is fine, because: the RPC set is identical; P4Runtime v1 is proto3, so a
-server ignores fields it does not know; and P4R-Type does not populate any of the
-post-v1.3 additions. A newer client talking to an older server is only a problem if
-the client *depends on* new fields, which it does not.
+```protobuf
+// before (what bmv2's pinned P4Runtime still has)
+enum SelectorSizeSemantics { SUM_OF_WEIGHTS = 0; SUM_OF_MEMBERS = 1; }
+SelectorSizeSemantics selector_size_semantics = 6;   // varint
+
+// v1.4.0+
+oneof selector_size_semantics {
+  SumOfWeights sum_of_weights = 6;                   // length-delimited!
+  SumOfMembers sum_of_members = 7;
+}
+```
+
+Field 6 goes varint → length-delimited and the `SelectorSizeSemantics` enum is
+deleted. Unlike `Replica` (field 1 keeps its number *and* type), this one is
+genuinely wire-incompatible, and it is **not** additive.
+
+It is reproducible, not theoretical — a pre-v1.4.0 p4info fails outright:
+
+```
+Failure: could not parse p4info JSON: Cannot find field: selectorSizeSemantics
+in message p4.config.v1.ActionProfile
+```
+
+`QuackMppTypegenSuite` pins this as a known limitation.
+
+### So is v1.5.0 safe against bmv2?
+
+**Safe for the pipelines in play, but with a real caveat — not unconditionally.**
+
+bmv2's `simple_switch_grpc` gets P4Runtime from PI, which vendors
+`p4lang/p4runtime` as a submodule pinned at `ec4eb5e` (2024-08-18) — *before* the
+v1.4.0 release (2024-09-13). So bmv2 speaks ~v1.3.0-era P4Runtime and our client
+protos are now ahead of the switch.
+
+That is fine **only where field 6 is unset**. Proto3 does not serialise an unset
+oneof, so a p4info with no action-profile selectors is byte-compatible in both
+directions. Every p4info in this repo — including `config1_lb`, the *load balancer*
+— declares zero `actionProfiles`, so none of them touch it.
+
+It is **not** fine if a pipeline uses action-profile selectors. Then:
+- a p4info from a p4c predating v1.4.0 will not parse against our protos (above); and
+- a P4Info we send via `SetForwardingPipelineConfig` puts field 6 on the wire as
+  length-delimited, which bmv2's pre-v1.4.0 parser reads as a varint enum.
+
+Pinning v1.4.1 does **not** help — the change landed *in* v1.4.0. Only staying
+pre-v1.4.0 would, which then fails to parse p4info from any current p4c. So v1.5.0
+is the right default; the constraint is that **p4c and bmv2 must agree with each
+other**, and if selectors are in play they must both be ≥ v1.4.0.
+
+> Correction, worth recording: an earlier revision of this section claimed
+> `p4info.proto` was "purely additive — no field removed, none renumbered". That
+> was wrong, and it was wrong because the script used to check it pushed a scope
+> for `message`/`oneof` but not for `enum`, so the enum's closing brace popped
+> `ActionProfile` early and mis-attributed the one field that mattered. A clean
+> result from a broken verifier is worse than no check.
 
 ### Warning noise
 
@@ -304,11 +390,21 @@ namespace; change it before any real release if that is not the plan.)
 The published jar was inspected rather than assumed — ScalaPB writes into
 `sourceManaged`, so it is worth confirming generated classes are actually packaged:
 
-| contents | count |
-| --- | --- |
-| `p4rtype/*` (the hand-written API) | 29 |
-| `p4/v1/p4runtime/*` (generated) | 417 |
-| `p4/config/v1/p4info/*` (generated) | 175 |
+| contents | count | |
+| --- | --- | --- |
+| `p4rtype/*` (the hand-written API) | 29 | wanted |
+| `p4/v1/p4runtime/*` (generated) | 417 | wanted |
+| `p4/config/v1/p4info/*` (generated) | 175 | wanted |
+| `typegen/*` (CLI + `generate`) | — | wanted |
+| **default-package classes at the jar root** | **35** | **unwanted — see §8.10** |
+| `config1/`, `config2/`, `config1_lb/`, `config2_nat/`, `config2_new/` | — | unwanted — see §8.10 |
+
+⚠️ **This table is not a clean bill of health.** The jar also ships every example:
+`bridge`, `firewall`, `forward_c1`, `forward_c2`, `loadbalancer`, `p4rtypeTest` and
+`router` compile to the **default package** (35 `.class`/`.tasty` entries at the jar
+root), and the `config*` packages are typegen output for someone else's p4info —
+the same category as the `quackmpp_exchange` fixture that was moved to test scope.
+Tracked as blocker §8.10.
 
 Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"..."`,
 so QuackMPP depends on it via:
@@ -363,6 +459,20 @@ verified free of `quackmpp/` entries.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
+10. **The published jar ships the examples, 35 of them in the default package.**
+    `bridge`, `firewall`, `forward_c1`, `forward_c2`, `loadbalancer`, `p4rtypeTest`
+    and `router` declare no package, so they land at the jar root; the `config*`
+    packages are typegen output for someone else's p4info. Both are a collision
+    hazard for anything embedding this library, and the default-package ones are
+    the same defect class as the `typegen` bug fixed in §4 — found only because
+    that fix prompted an audit. Moving the fixture out of `src/main/` (§7) fixed
+    one instance of this and missed ten.
+
+    Not fixed here because the right fix is structural and touches documented
+    workflows: move `src/main/scala/examples/` into its own unpublished sbt
+    subproject (`README.md` documents `runMain p4rtypeTest` etc., and the examples
+    need the mininet VM, so they cannot simply move to test scope). Worth doing
+    before QuackMPP depends on the artifact.
 9. **If QuackMPP uses packet replication, read §5's `Replica` note first.** An MPP
    exchange fabric plausibly wants multicast/clone to fan packets across workers,
    and that is the one place the v1.5.0 refresh bites:

@@ -1,5 +1,13 @@
+// This suite deliberately lives in a NAMED package, not the empty package.
+// `generate` is meant to be called by a downstream build (QuackMPP's Mill build
+// compiles into `build`/`millbuild`), and the empty package is not importable
+// from a named one. A test in the empty package would resolve `generate` even if
+// no real consumer could, so it would prove nothing about the thing that matters.
+package p4rtype.consumertest
+
 import p4rtype.{Exact, TableEntry, bytes}
 import quackmpp.{TableMatchFields, TableAction, ActionParams}
+import typegen.generate
 
 /** Pins the guarantee QuackMPP spec 003 depends on: the Scala 3 types generated
   * by `typegen` from a p4c/v1model p4info make a renamed or removed P4 match
@@ -27,17 +35,24 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     *
     * This calls the `generate` library entry point directly. It used to be a
     * shell pipeline in CI that ran `runMain parseP4info`, sed'd the types out of
-    * sbt's log and diffed them — which was fragile in two ways worth remembering:
-    * a genuine failure produced no output and got misreported as "drift", and the
-    * JVM's sun.misc.Unsafe warnings on stderr could contaminate the comparison.
-    * A library entry point makes all of that unnecessary.
+    * sbt's log and diffed them. That went green locally and failed in real CI:
+    * sbt colourises its output there, so `[success]` is actually
+    * `[<ESC>[32msuccess<ESC>[0m]` and the sed that was meant to cut sbt's trailer
+    * never matched — appending the success line and a screen-clear escape to the
+    * compared text. Both inputs now come off the test classpath (build.sbt copies
+    * the fixture there), so there is no log to parse and no working directory to
+    * depend on.
     */
   test("typegen output matches the committed quackmpp_exchange.scala") {
     val p4info = scala.io.Source.fromResource("quackmpp_exchange.p4info.json").mkString
-    val committed =
-      scala.io.Source.fromFile(
-        System.getProperty("user.dir") + "/src/test/scala/quackmpp_exchange.scala"
-      ).mkString
+
+    // user.dir is the project base directory for unforked tests; build.sbt pins
+    // `Test / fork := false` for exactly this reason.
+    val fixture = java.io.File(
+      System.getProperty("user.dir"), "src/test/scala/quackmpp_exchange.scala"
+    )
+    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath} (is Test/fork on?)")
+    val committed = scala.io.Source.fromFile(fixture).mkString
 
     generate(p4info, "quackmpp") match
       case Left(err) => fail(s"typegen failed: $err")
@@ -46,6 +61,32 @@ class QuackMppTypegenSuite extends munit.FunSuite {
           out,
           committed,
           "typegen output drifted from src/test/scala/quackmpp_exchange.scala — regenerate it"
+        )
+  }
+
+  /** Pins a KNOWN LIMITATION of the v1.5.0 proto refresh, so it is a documented
+    * behaviour rather than a surprise in the field.
+    *
+    * P4Runtime v1.4.0 replaced `ActionProfile.selector_size_semantics` — an enum
+    * at field 6 — with a `oneof` whose `sum_of_weights` arm reuses field 6 as a
+    * *message*. That flips the wire type varint -> length-delimited, so it is the
+    * one genuinely wire-incompatible change in the refresh (unlike `Replica`,
+    * where field 1 keeps its number and type).
+    *
+    * Consequence: a p4info emitted by a p4c predating v1.4.0 cannot be parsed
+    * against our protos IF it uses action-profile selectors. It only bites there
+    * — none of the other fixtures declare an actionProfile at all, which is why
+    * they are unaffected. See UPGRADE.md §5.
+    */
+  test("a pre-v1.4.0 p4info using action-profile selectors is rejected, with a clear error") {
+    val legacy = scala.io.Source.fromResource("legacy_actionprofile.p4info.json").mkString
+    generate(legacy, "legacy") match
+      case Right(_) =>
+        fail("expected the pre-v1.4.0 selector_size_semantics shape to be rejected")
+      case Left(err) =>
+        assert(
+          err.contains("selectorSizeSemantics"),
+          s"expected the error to name the incompatible field, got: $err"
         )
   }
 
