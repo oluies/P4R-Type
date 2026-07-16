@@ -1,5 +1,15 @@
 # P4R-Type artifact instructions
 
+> **This is a fork.** It has been upgraded from the original OOPSLA artifact
+> (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
+> **Scala 3.8.4 / sbt 2.0.2 / JDK 25**, to serve as the control-plane binding
+> library for QuackMPP. See **[UPGRADE.md](UPGRADE.md)** for the version record,
+> the sbt-vs-Mill decision, and known blockers, and **[PROMPTS.md](PROMPTS.md)**
+> for the deferred dependency work.
+>
+> The `sbt` invocations below still apply, but note that under sbt 2 you must run
+> `sbt "testFull"` rather than `sbt test` to actually execute the suite.
+
 This repository contains:
 
   * In `P4R-Type/`: The code for the P4R-Type API and type generator, as well as examples that use the P4R-Type API.

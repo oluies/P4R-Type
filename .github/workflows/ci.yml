@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['25']
+
+    defaults:
+      run:
+        working-directory: P4R-Type
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      # sbt 2 joins bare CLI args into a single command line, so multiple
+      # commands must be quoted and separated with ';'.
+      # `testFull` (not `test`) is required: sbt 2's `test` is incremental and
+      # will report success having run zero tests.
+      - name: Compile and test
+        run: sbt -batch "compile; Test/compile; testFull"
+
+      - name: Verify typegen against the v1model p4info fixture
+        run: |
+          sbt -batch "runMain parseP4info src/main/scala/examples/quackmpp_exchange.p4info.json quackmpp" 2>/dev/null \
+            | sed -n '/^package quackmpp/,$p' | sed '/^\[success\]/,$d' | sed '/^\[info\]/d' > /tmp/regenerated.scala
+          if ! diff -u src/main/scala/examples/quackmpp_exchange.scala /tmp/regenerated.scala; then
+            echo "::error::typegen output drifted from the committed quackmpp_exchange.scala. Regenerate it."
+            exit 1
+          fi

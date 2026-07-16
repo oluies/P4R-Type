@@ -1,0 +1,73 @@
+{
+ "pkgInfo": {
+  "arch": "v1model"
+ },
+ "tables": [
+  {
+   "preamble": {
+    "id": 33554433,
+    "name": "QuackMPP.exchange",
+    "alias": "exchange"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "meta.quack.bucket",
+     "bitwidth": 16,
+     "matchType": "EXACT"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 16777217
+    },
+    {
+     "id": 16777218
+    },
+    {
+     "id": 21257015
+    }
+   ],
+   "size": "1024"
+  }
+ ],
+ "actions": [
+  {
+   "preamble": {
+    "id": 21257015,
+    "name": "NoAction",
+    "alias": "NoAction",
+    "annotations": [
+     "@noWarn(\"unused\")"
+    ]
+   }
+  },
+  {
+   "preamble": {
+    "id": 16777218,
+    "name": "QuackMPP.drop",
+    "alias": "drop"
+   }
+  },
+  {
+   "preamble": {
+    "id": 16777217,
+    "name": "QuackMPP.set_worker",
+    "alias": "set_worker"
+   },
+   "params": [
+    {
+     "id": 1,
+     "name": "worker_id",
+     "bitwidth": 32
+    },
+    {
+     "id": 2,
+     "name": "port",
+     "bitwidth": 9
+    }
+   ]
+  }
+ ],
+ "typeInfo": {}
+}

@@ -18,3 +18,10 @@ project/plugins/project/
 *.log
 
 hs_err_pid*
+# roborev snapshots
+/.roborev/
+
+# Metals / Bloop (auto-generated, must not be committed)
+project/metals.sbt
+.bloop/
+.metals/
