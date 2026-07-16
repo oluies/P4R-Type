@@ -70,6 +70,10 @@ jobs:
 
       - name: Recompile the P4 and compare the emitted p4info
         working-directory: P4R-Type/examples/src/main/p4
+        # `shell: bash` on purpose: inside a container job GitHub defaults to
+        # `sh -e {0}`, and p4lang/p4c's sh is dash — which rejects `set -o
+        # pipefail` with "Illegal option -o pipefail" before running anything.
+        shell: bash
         run: |
           set -euo pipefail
           p4c --target bmv2 --arch v1model \

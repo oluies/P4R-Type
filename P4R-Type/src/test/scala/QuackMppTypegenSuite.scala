@@ -39,19 +39,22 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     * sbt colourises its output there, so `[success]` is actually
     * `[<ESC>[32msuccess<ESC>[0m]` and the sed that was meant to cut sbt's trailer
     * never matched — appending the success line and a screen-clear escape to the
-    * compared text. Both inputs now come off the test classpath (build.sbt copies
-    * the fixture there), so there is no log to parse and no working directory to
-    * depend on.
+    * compared text. Calling `generate` directly removes the log parsing entirely.
+    *
+    * The p4info comes off the test classpath; the expected output is read from
+    * the source tree, since sbt excludes *.scala from resources and it has to
+    * stay a compiled source (that is what proves the emitted types compile).
     */
   test("typegen output matches the committed quackmpp_exchange.scala") {
     val p4info = scala.io.Source.fromResource("quackmpp_exchange.p4info.json").mkString
 
-    // user.dir is the project base directory for unforked tests; build.sbt pins
-    // `Test / fork := false` for exactly this reason.
+    // user.dir is the project base directory because build.sbt sets
+    // `Test / fork := true` — sbt gives a forked test JVM
+    // workingDirectory = baseDirectory. Unforked it would just inherit sbt's cwd.
     val fixture = java.io.File(
       System.getProperty("user.dir"), "src/test/scala/quackmpp_exchange.scala"
     )
-    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath} (is Test/fork on?)")
+    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath}")
     val committed = scala.io.Source.fromFile(fixture).mkString
 
     generate(p4info, "quackmpp") match

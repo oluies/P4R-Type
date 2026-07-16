@@ -421,7 +421,7 @@ The jar previously shipped every example: `bridge`, `firewall`, `forward_c1`,
 they landed in the **default package** (35 `.class`/`.tasty` entries at the jar
 root), and the `config*` packages are typegen output for a specific p4info — the
 same category as the `quackmpp_exchange` fixture. The examples are now a separate,
-never-published project (§8.10), and the counts above are verified, not assumed.
+never-published project (§8.8), and the counts above are verified, not assumed.
 
 Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"..."`,
 so QuackMPP depends on it via:
@@ -477,7 +477,7 @@ verified free of `quackmpp/` entries.
 7. **`Chan`/`connect` hardcode an election id** of `Uint128(high=0, low=1)` and a
    single primary client. Multi-controller / role-based arbitration (which an MPP
    fabric may want) is not modelled.
-10. ~~**The published jar ships the examples, 35 of them in the default package.**~~
+8. ~~**The published jar ships the examples, 35 of them in the default package.**~~
     Fixed. `src/main/scala/examples/` is now the separate `examples` project
     (`examples/src/main/scala/`) with `publish / skip := true`, so the jar contains
     0 default-package entries and no `config*` packages — verified. The examples
@@ -501,7 +501,7 @@ verified free of `quackmpp/` entries.
 
    P4R-Type itself models neither multicast nor clone sessions, so QuackMPP would
    be building on `p4.v1.p4runtime.*` directly rather than on the `p4rtype` API.
-8. **Scala Steward's PRs are CI-gated only once `STEWARD_TOKEN` exists.** The
+10. **Scala Steward's PRs are CI-gated only once `STEWARD_TOKEN` exists.** The
    workflow now reads `secrets.STEWARD_TOKEN` and falls back to `GITHUB_TOKEN`.
    PRs opened with `GITHUB_TOKEN` do not trigger workflow runs, so until the
    secret is added, bump PRs still merge without CI — which given §3 are the PRs
@@ -509,7 +509,7 @@ verified free of `quackmpp/` entries.
    scoped to this repo with Contents: read/write and Pull requests: read/write,
    and add it as `STEWARD_TOKEN`.
 
-9. **P4R-Type cannot install a forwarding pipeline.** There is no
+11. **P4R-Type cannot install a forwarding pipeline.** There is no
    `SetForwardingPipelineConfig` anywhere in `src/main/scala/api/` — the API is
    connect / insert / read / write / delete. The mininet VM loads the pipeline out
    of band, which is why this was never felt. QuackMPP spec 003 regenerates types

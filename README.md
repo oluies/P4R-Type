@@ -82,7 +82,7 @@ At this point, the artifact should be working.
 Examples that use the P4R-Type API with generated types; all of them require the
 P4R-Type VM to be running. This is a separate project that is **never published**,
 so the examples and their generated `config*` types stay out of the library jar
-([UPGRADE.md](UPGRADE.md) §8.10).
+([UPGRADE.md](UPGRADE.md) §8.8).
 
 For inspecting the code, we recommend using [VS Code](https://code.visualstudio.com/)
 with the [Scala Metals](https://scalameta.org/metals/docs/editors/vscode) extension,

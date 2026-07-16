@@ -38,12 +38,17 @@ lazy val root = project
     ),
 
     // QuackMppTypegenSuite's drift check reads the committed fixture as text via
-    // System.getProperty("user.dir"), which sbt sets to the project base
-    // directory only for *unforked* tests. Pin fork off so that stays true —
-    // this is already the default, but the test depends on it, so it is stated
-    // rather than assumed. (Putting the test source dir on the resource
-    // classpath instead does not work: sbt excludes *.scala from resources.)
-    Test / fork := false,
+    // System.getProperty("user.dir"), so that has to be the project base
+    // directory. Forking is what guarantees it: sbt builds fork options with
+    // workingDirectory = baseDirectory, whereas an *unforked* test runs in sbt's
+    // own JVM and simply inherits user.dir from wherever sbt was launched — which
+    // only looks correct because you usually launch sbt from here. Under a tool
+    // that starts the test JVM elsewhere (Metals/Bloop at the workspace root)
+    // unforked would break. Verified: forked also still inherits the ambient
+    // environment, which Bmv2WireSuite's P4RT_BMV2 needs.
+    // (Putting the test source dir on the resource classpath instead does not
+    // work: sbt excludes *.scala from resources.)
+    Test / fork := true,
 
     libraryDependencies ++= Seq(
       "com.thesamet.scalapb" %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
@@ -78,6 +83,14 @@ lazy val examples = project
   .settings(
     name           := "p4rt-scala-examples",
     scalaVersion   := scala3Version,
-    publish / skip := true,
-    Compile / run / fork := true
+    publish / skip := true
+
+    // Deliberately NOT `Compile / run / fork := true`, unlike root. sbt does not
+    // forward stdin to a forked process (`run / connectInput` defaults to
+    // false), and `router` drives its entire CLI off scala.io.StdIn.readLine —
+    // forked, that reads EOF, gets null, and loops forever printing
+    // "Invalid action." The fork on root exists because parseP4info calls
+    // System.exit; no example does, and none reads a cwd-relative file, so a
+    // fork here would buy nothing and cost the CLI. CI only compiles the
+    // examples (they need the VM), so nothing would have caught it.
   )

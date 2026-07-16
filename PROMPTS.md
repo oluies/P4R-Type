@@ -34,7 +34,7 @@ this file and of UPGRADE.md said so; it was wrong, see UPGRADE.md §5).
 
 v1.5.0 is still the right default and pinning v1.4.1 would not help (the change
 landed in v1.4.0) — but it is only safe where action-profile selectors are unused,
-which covers every fixture here. See `UPGRADE.md` §5 and blockers §8.9/§8.10.
+which covers every fixture here. See `UPGRADE.md` §5 and blocker §8.9 (`Replica`).
 
 ---
 
