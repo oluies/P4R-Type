@@ -98,11 +98,23 @@ The following instructions must be followed from inside the directory `$ROOT/P4R
 
 To compile a P4info file into a Scala 3 package, use
 
-    sbt "runMain typegen.parseP4info <p4info-file> <package-name>"
+    sbt "runMain typegen.parseP4info <p4info-file> <package-name> [output.scala]"
 
 where `<p4info-file>` is the relative path of the P4info file to be compiled, and
 `<package-name>` is the name of the package to be generated.
-The generated Scala package is written to stdout.
+With no output path the generated Scala package is written to stdout; with one it
+is written to that file.
+
+> Prefer the output path over redirecting stdout. sbt interleaves its own log
+> lines into stdout and colourises them in CI, so `sbt "runMain ..." > Foo.scala`
+> produces a file with `[info]` lines and ANSI escapes in it (`--error` does not
+> help — the thin client still prints).
+
+Build tools should call the library entry point directly rather than either:
+
+```scala
+typegen.generate(p4infoJson: String, packageName: String): Either[String, String]
+```
 
 As an example of how to generate a package, navigate to the `$ROOT/P4R-Type/` directory and run:
 

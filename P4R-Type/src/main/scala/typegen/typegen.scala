@@ -550,10 +550,26 @@ def generate(p4infoJson : String, packageName : String) : Either[String, String]
     output <- genP4Info(p4info)
   } yield "package " + packageName + "\n\n" + output
 
+/** CLI wrapper around [[generate]].
+  *
+  * With two arguments it prints to stdout, as it always has (README documents
+  * that). With an optional third it writes the file itself.
+  *
+  * The file mode exists because "print to stdout and redirect" is not actually
+  * usable: sbt interleaves its own log lines into stdout and colourises them in
+  * CI, so `sbt "runMain ..." > Foo.scala` yields a file with `[info]` lines and
+  * ANSI escapes in it. `--error` does not help — the thin client still prints.
+  * Every attempt to filter that back out has been a bug (see the drift check's
+  * history), so the program writes the bytes instead of asking a shell to
+  * salvage them.
+  */
 object parseP4info {
   def main(args : Array[String]) : Unit =
-    if args.length != 2 then
-      System.err.println("usage: sbt \"runMain typegen.parseP4info <p4info.json> <package-name>\"")
+    if args.length < 2 || args.length > 3 then
+      System.err.println(
+        "usage: sbt \"runMain typegen.parseP4info <p4info.json> <package-name> [output.scala]\"\n" +
+        "       with no output path the generated package is written to stdout"
+      )
       System.exit(1)
     else
       val source =
@@ -561,8 +577,17 @@ object parseP4info {
         catch case e : Throwable => Left("Failure: could not read " + args(0) + ": " + e.getMessage)
 
       source.flatMap(generate(_, args(1))) match
-        case Right(out) => print(out)
         case Left(err)  =>
           System.err.println(err)
           System.exit(1)
+        case Right(out) =>
+          if args.length == 2 then print(out)
+          else
+            try
+              val path = java.nio.file.Path.of(System.getProperty("user.dir"), args(2))
+              java.nio.file.Files.writeString(path, out)
+              System.err.println("wrote " + path)
+            catch case e : Throwable =>
+              System.err.println("Failure: could not write " + args(2) + ": " + e.getMessage)
+              System.exit(1)
 }

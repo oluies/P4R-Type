@@ -4,10 +4,9 @@
  * real p4c — rather than by hand-writing JSON in the shape p4c is believed to
  * emit. (That guess was close but wrong: p4c also emits `initialDefaultAction`.)
  *
- * Regenerate the fixture from the repo root with:
- *   container/p4rt.sh gen
- * which writes straight to P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
- * and then prints the sbt command that regenerates the Scala types.
+ * Regenerate from the repo root with:
+ *   container/p4rt.sh gen        -> P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
+ *   container/p4rt.sh gen-types  -> P4R-Type/src/test/scala/quackmpp_exchange.scala
  * Do not write a p4info next to this file: nothing reads it, and CI compares
  * against the fixture.
  *

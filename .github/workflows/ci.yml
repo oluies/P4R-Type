@@ -121,8 +121,8 @@ jobs:
 
           if ! diff -u "$FIXTURE" "$FRESH"; then
             echo "::error::p4c's p4info no longer matches the committed fixture (diff above)."
-            echo "::error::Run 'container/p4rt.sh gen', then the sbt command it prints to"
-            echo "::error::regenerate P4R-Type/src/test/scala/quackmpp_exchange.scala, and re-run the tests."
+            echo "::error::Run 'container/p4rt.sh gen' then 'container/p4rt.sh gen-types',"
+            echo "::error::which refresh the fixture and the generated types, and re-run the tests."
             exit 1
           fi
           echo "p4info fixture matches $(docker run --rm "$IMAGE" p4c --version | head -1)"
