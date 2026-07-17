@@ -75,30 +75,54 @@ jobs:
 
       # p4lang publishes linux/amd64 only; ubuntu-latest is amd64, so this runs
       # natively. On an arm64 dev machine it needs emulation — see ARCHITECTURE.md §5.
+      #
+      # Every failure below names what actually failed. This job's whole lineage
+      # is people being sent to fix the wrong thing: a missing fixture reported
+      # as drift, then a missing file reported as drift again. So infrastructure,
+      # p4c, a missing output and real drift are four distinct messages.
       - name: Recompile the P4 and compare the emitted p4info
         shell: bash
         env:
+          IMAGE: p4lang/p4c:latest
           FIXTURE: P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
-          FRESH: P4R-Type/_fresh.p4info.json
+          P4FILE: P4R-Type/examples/src/main/p4/quackmpp.p4
+          # Output goes to its own directory, bind-mounted separately, so the
+          # build artifact never lands in the checked-out source tree.
+          OUTDIR: ${{ runner.temp }}/p4c-out
         run: |
           set -euo pipefail
+          FRESH="$OUTDIR/quackmpp.p4info.json"
+          mkdir -p "$OUTDIR"
 
           test -f "$FIXTURE" || { echo "::error::fixture missing at $(pwd)/$FIXTURE"; exit 1; }
-          test -f P4R-Type/examples/src/main/p4/quackmpp.p4 || { echo "::error::P4 source missing"; exit 1; }
+          test -f "$P4FILE"  || { echo "::error::P4 source missing at $(pwd)/$P4FILE"; exit 1; }
 
-          # Write into the mounted tree, not the container's /tmp, so the result
-          # survives the run.
-          if ! docker run --rm -v "$PWD/P4R-Type:/proj" -w /proj/examples/src/main/p4 \
-                 p4lang/p4c:latest \
-                 sh -c 'p4c --target bmv2 --arch v1model --p4runtime-files /proj/_fresh.p4info.json -o /tmp quackmpp.p4'; then
-            echo "::error::p4c failed to compile quackmpp.p4 — this is a compile error, not drift."
+          # Pull separately from the compile. `docker run` exits non-zero for a
+          # pull failure or a Docker Hub rate limit just as it does for a p4c
+          # error, and blaming the developer's P4 for Docker Hub being busy is
+          # exactly the kind of misdirection this job keeps getting wrong.
+          if ! docker pull -q "$IMAGE"; then
+            echo "::error::could not pull $IMAGE — infrastructure failure, not drift."
             exit 1
           fi
+
+          if ! docker run --rm \
+                 -v "$PWD/P4R-Type:/proj:ro" -v "$OUTDIR:/out" \
+                 -w /proj/examples/src/main/p4 "$IMAGE" \
+                 sh -c 'p4c --target bmv2 --arch v1model --p4runtime-files /out/quackmpp.p4info.json -o /tmp quackmpp.p4'; then
+            echo "::error::p4c failed to compile $P4FILE — a compile error, not drift."
+            exit 1
+          fi
+
+          # p4c exiting 0 without writing the file would otherwise reach `diff`,
+          # which reports "No such file or directory" — and the branch below
+          # would call that drift.
+          test -f "$FRESH" || { echo "::error::p4c exited 0 but wrote no p4info to $FRESH"; exit 1; }
 
           if ! diff -u "$FIXTURE" "$FRESH"; then
             echo "::error::p4c's p4info no longer matches the committed fixture (diff above)."
-            echo "::error::Run container/p4rt.sh gen, regenerate src/test/scala/quackmpp_exchange.scala,"
-            echo "::error::and re-run the tests."
+            echo "::error::Run 'container/p4rt.sh gen', then the sbt command it prints to"
+            echo "::error::regenerate P4R-Type/src/test/scala/quackmpp_exchange.scala, and re-run the tests."
             exit 1
           fi
-          echo "p4info fixture matches p4c $(docker run --rm p4lang/p4c:latest p4c --version | head -1)"
+          echo "p4info fixture matches $(docker run --rm "$IMAGE" p4c --version | head -1)"

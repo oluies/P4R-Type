@@ -30,10 +30,11 @@ project/metals.sbt
 # fixture at P4R-Type/src/test/resources/quackmpp_exchange.p4info.json —
 # anything p4c writes next to the .p4 source is scratch. A second committed copy
 # in examples/ was read by nothing and drifted silently.
-# (Other p4infos are committed for other P4 programs: legacy_actionprofile, and
-# the config* fixtures the README's typegen examples use. Those are unaffected.)
+# (Other p4infos are committed for other P4 programs and are unaffected:
+# legacy_actionprofile, read by QuackMppTypegenSuite; and the config* fixtures
+# behind the examples/ Scala packages and vm/files/Makefile. README.md:109 runs
+# typegen against config1.p4info.json.)
 *.p4i
 P4R-Type/examples/src/main/p4/quackmpp.json
 P4R-Type/examples/src/main/p4/quackmpp.p4info.json
 P4R-Type/examples/src/main/p4/quackmpp.vm-era.p4info.json
-P4R-Type/_fresh.p4info.json
