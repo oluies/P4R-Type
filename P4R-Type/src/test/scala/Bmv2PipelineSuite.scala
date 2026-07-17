@@ -94,26 +94,17 @@ class Bmv2PipelineSuite extends munit.FunSuite {
     assertEquals(field, "meta.quack.bucket")
     assertEquals(found.head.action, "QuackMPP.set_worker")
 
-    // NOTE: we wrote bytes(0, 7) — two bytes for a bit<16> field — and the
-    // switch returns ONE byte, 0x07. That is not bmv2 being lax; it is the
-    // P4Runtime canonical binary string: "the shortest string that fits the
-    // encoded integer value" (spec §"Binary Strings"). The switch canonicalises,
-    // P4R-Type does not.
+    // We wrote bytes(0, 7) — two bytes for a bit<16> field — and the switch
+    // returns ONE byte, 0x07. That is not bmv2 being lax; it is the P4Runtime
+    // canonical binary string: "the shortest string that fits the encoded
+    // integer value". The switch canonicalises, P4R-Type does not, so
+    // write-then-read does not round-trip the value (UPGRADE.md §8.12).
     //
-    // The consequence is that P4R-Type breaks the read-write symmetry the spec
-    // asks for, whose own pseudocode is precisely this test:
-    //
-    //     status         = server.write(intended_value, p4_entity)
-    //     observed_value = server.read(p4_entity)
-    //     assert(intended_value == observed_value)     // fails here
-    //
-    // So `assertEquals(m.v, bytes(0, 7))` fails against a real switch. Asserting
-    // the canonical value instead documents the actual behaviour rather than
-    // hiding it — see UPGRADE.md §8.12 for the fix (canonicalise on write).
+    // This assertion only records what the *switch* returns, and the switch
+    // returns the canonical form whether or not P4R-Type is fixed — so it is a
+    // observation, NOT a tripwire for §8.12. The tripwire is in
+    // QuackMppTypegenSuite, which inspects P4R-Type's own write path and needs
+    // no switch to do it.
     assertEquals(m.v, bytes(7), "expected the switch's canonical 1-byte form")
-    assertNotEquals(
-      m.v, bytes(0, 7),
-      "if this now matches, P4R-Type canonicalises on write and §8.12 is fixed — update this test"
-    )
   }
 }

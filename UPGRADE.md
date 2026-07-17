@@ -551,8 +551,16 @@ verified free of `quackmpp/` entries.
     in `matchFieldToProto` and the action-param path: strip leading zero bytes,
     with `V=0` encoding as a single `0x00` (the spec defines zero as needing one
     bit, hence one byte). The existing examples are unaffected (`bytes(10,0,1,1)`,
-    `bytes(8,0,0,0,1,17)` are already canonical). `Bmv2PipelineSuite` pins the
-    current behaviour and will tell you when it changes.
+    `bytes(8,0,0,0,1,17)` are already canonical).
+
+    Pinned by a tripwire in `QuackMppTypegenSuite` that asserts the *bug* —
+    `matchFieldToProto` emitting the non-canonical bytes — so it fails the moment
+    the fix lands, with instructions to invert it. It inspects P4R-Type's own
+    write path rather than what a switch returns, which is the only way to see
+    this: a switch canonicalises whether or not we do, so `Bmv2PipelineSuite`'s
+    read-back value is identical before and after the fix and cannot detect it.
+    Checking the write path also means the tripwire runs in CI, no bmv2 needed.
+    Mutation-tested: adding canonicalisation makes it fail as intended.
 
 ## 9. Working on this build — two traps
 

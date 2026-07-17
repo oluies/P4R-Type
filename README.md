@@ -110,7 +110,9 @@ is written to that file.
 > produces a file with `[info]` lines and ANSI escapes in it (`--error` does not
 > help — the thin client still prints).
 
-Build tools should call the library entry point directly rather than either:
+The two CLI forms above are for humans. **Build tools should not shell out to
+`parseP4info` at all** — neither the stdout form nor the output-path form. Call
+the library entry point directly, which is what `QuackMppTypegenSuite` does:
 
 ```scala
 typegen.generate(p4infoJson: String, packageName: String): Either[String, String]

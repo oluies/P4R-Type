@@ -170,6 +170,12 @@ is pre-v1.4.0 and that a v1.5.0 client can still drive it.
 the canonicalisation gap ([UPGRADE.md](UPGRADE.md) §8.12) — the kind of thing only
 a real switch tells you.
 
+That gap is *pinned* elsewhere, though: by a tripwire in `QuackMppTypegenSuite`
+which asserts the bug in `matchFieldToProto` and so fails when the fix lands. A
+switch canonicalises whether or not P4R-Type does, so the read-back value looks
+the same before and after — only the write path shows the defect, and checking it
+needs no switch.
+
 ## 5. Running the containers
 
 The images are **linux/amd64 only** — `p4lang` publishes no arm64. That decides

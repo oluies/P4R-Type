@@ -94,6 +94,35 @@ class QuackMppTypegenSuite extends munit.FunSuite {
         )
   }
 
+  /** TRIPWIRE for UPGRADE.md §8.12 — P4R-Type does not canonicalise binary
+    * strings, so `write` then `read` does not round-trip a value.
+    *
+    * This looks at P4R-Type's own write path rather than at what a switch
+    * returns, which is the only way to see the defect: a switch canonicalises
+    * whether or not we do, so `Bmv2PipelineSuite`'s observation of the read-back
+    * value is identical before and after the fix and cannot detect it. Checking
+    * `matchFieldToProto` also means this runs in CI, with no bmv2 involved.
+    *
+    * It asserts the BUG. When someone fixes §8.12 this test fails, which is the
+    * point — it is the reminder to invert it and to revisit `Bmv2PipelineSuite`.
+    */
+  test("§8.12 tripwire: matchFieldToProto does NOT canonicalise (asserts the bug)") {
+    val fm = p4rtype.matchFieldToProto(1, Exact(bytes(0, 7)))
+    val onTheWire = fm.fieldMatchType.exact.get.value
+
+    assertEquals(
+      onTheWire, bytes(0, 7),
+      "P4R-Type now canonicalises on write — §8.12 is FIXED. Invert this test " +
+      "(expect bytes(7)), and update Bmv2PipelineSuite and UPGRADE.md §8.12."
+    )
+    // Spelling out what is wrong with the above: P4Runtime's canonical form for
+    // this value is one byte, and the spec asks clients to send canonical.
+    assertNotEquals(
+      onTheWire, bytes(7),
+      "this is the canonical form the spec wants; if we emit it, §8.12 is fixed"
+    )
+  }
+
   test("generate reports malformed p4info JSON as a Left rather than throwing") {
     generate("{ not json", "quackmpp") match
       case Left(err) => assert(err.contains("could not parse p4info JSON"), err)

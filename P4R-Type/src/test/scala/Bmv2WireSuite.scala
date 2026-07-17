@@ -70,14 +70,28 @@ class Bmv2WireSuite extends munit.FunSuite {
     )
   }
 
-  test("bmv2 rejects GetForwardingPipelineConfig with no pipeline, over v1.5.0 protos") {
-    // Started with `--no-p4`, so bmv2 answers FAILED_PRECONDITION. That *is* the
-    // round-trip: the request was encoded with our v1.5.0 protos, understood by a
-    // 1.3.0 switch, and a structured gRPC status came back. A generic transport
-    // failure (UNAVAILABLE) would look nothing like this.
-    val err = intercept[io.grpc.StatusRuntimeException] {
-      withStub(_.getForwardingPipelineConfig(GetForwardingPipelineConfigRequest(deviceId = 0)))
-    }
-    assertEquals(err.getStatus.getCode, io.grpc.Status.Code.FAILED_PRECONDITION)
+  test("GetForwardingPipelineConfig round-trips over v1.5.0 protos") {
+    // Deliberately tolerant of BOTH outcomes, because this suite does not own the
+    // switch. With `--no-p4` and nothing installed, bmv2 answers
+    // FAILED_PRECONDITION; but Bmv2PipelineSuite installs a pipeline on device 0
+    // of this same switch, so if both suites run in one JVM (P4RT_BMV2 and
+    // P4RT_BMV2_JSON both set), whichever ran first decides what comes back.
+    // Asserting only FAILED_PRECONDITION made this suite pass or fail on test
+    // discovery order.
+    //
+    // Either answer proves the point: the request was encoded with our v1.5.0
+    // protos, understood by a 1.3.0 switch, and something structured came back.
+    // A transport failure (UNAVAILABLE) looks like neither.
+    try
+      val resp = withStub(
+        _.getForwardingPipelineConfig(GetForwardingPipelineConfigRequest(deviceId = 0))
+      )
+      assert(resp.config.isDefined, "a pipeline is installed, so a config should come back")
+    catch
+      case e : io.grpc.StatusRuntimeException =>
+        assertEquals(
+          e.getStatus.getCode, io.grpc.Status.Code.FAILED_PRECONDITION,
+          s"expected FAILED_PRECONDITION (no pipeline installed), got ${e.getStatus}"
+        )
   }
 }

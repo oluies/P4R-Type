@@ -583,11 +583,18 @@ object parseP4info {
         case Right(out) =>
           if args.length == 2 then print(out)
           else
+            // resolve, not Path.of(dir, arg): Path.of JOINS, so an absolute
+            // output path would be silently rebased under the project directory
+            // (/tmp/Foo.scala -> <P4R-Type>/tmp/Foo.scala). resolve returns the
+            // argument unchanged when it is already absolute.
+            val path = java.nio.file.Path.of(System.getProperty("user.dir")).resolve(args(2))
             try
-              val path = java.nio.file.Path.of(System.getProperty("user.dir"), args(2))
               java.nio.file.Files.writeString(path, out)
               System.err.println("wrote " + path)
             catch case e : Throwable =>
-              System.err.println("Failure: could not write " + args(2) + ": " + e.getMessage)
+              System.err.println(
+                "Failure: could not write " + path + ": " +
+                e.getClass.getSimpleName + ": " + e.getMessage
+              )
               System.exit(1)
 }
