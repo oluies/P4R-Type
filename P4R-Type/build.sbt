@@ -1,7 +1,7 @@
 val scala3Version = "3.8.4"
 
 val grpcVersion   = "1.82.2"
-val protobufVersion = "4.35.0"   // must match what scalapb-runtime pulls
+val protobufVersion = "4.35.1"   // must match what scalapb-runtime pulls
 val munitVersion  = "1.3.4"
 
 // The library. This is the only thing published, and it must contain only the
