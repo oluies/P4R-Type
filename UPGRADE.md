@@ -544,8 +544,12 @@ verified free of `quackmpp/` entries.
     assert(intended_value == observed_value)   # now passes
     ```
     Verified against a real bmv2 — `Bmv2PipelineSuite` asserts the switch returns
-    exactly what went on the wire — plus unit tests on the write path that need no
-    switch. Two details worth keeping: zero encodes as a single `0x00`, not the
+    exactly what went on the wire — plus tests that need no switch and pin *both*
+    halves: `Chan.toProto` reads neither socket nor channel, so it can be driven
+    with nulls, which covers the match field and the action params (the second
+    half lives in typegen's emitted code, not in `matchFieldToProto`, so a test of
+    that function alone would leave it unpinned). Mutation-tested: reverting
+    either half fails. Two details worth keeping: zero encodes as a single `0x00`, not the
     empty string (the spec defines zero as needing one bit, and "if the string's
     byte length is zero, the server always rejects the string"); and only
     *leading* zeros go, so `bytes(10, 0, 1, 1)` survives intact.

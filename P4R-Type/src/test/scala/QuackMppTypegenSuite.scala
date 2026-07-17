@@ -128,6 +128,42 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     assertEquals(p4rtype.canonical(bytes(0)), bytes(0))
   }
 
+  /** Pins what actually goes on the wire, through the whole write path.
+    *
+    * The per-function tests above cover `matchFieldToProto`, but canonicalising
+    * is two halves and the other one lives in *generated* code: `typegen` emits
+    * `Param(paramId = 1, value = p4rtype.canonical(p0))`. Testing only
+    * `matchFieldToProto` would let someone fix or break the param half with no
+    * signal — and `router.scala` feeds one computed value into both an `Exact`
+    * and an action param, so the halves are not hypothetically independent.
+    *
+    * `Chan.toProto` reads neither `socket` nor `channel`, so it can be driven
+    * with nulls: this is the real conversion, no bmv2 needed.
+    */
+  test("the whole write path canonicalises: match fields AND action params") {
+    val chan = quackmpp.Chan(0, null, null)
+
+    val proto = chan.toProto(TableEntry[TableMatchFields, TableAction, ActionParams](
+      "QuackMPP.exchange",
+      ("meta.quack.bucket", Exact(bytes(0, 7))),              // 2 bytes in
+      "QuackMPP.set_worker",
+      (("worker_id", bytes(0, 0, 0, 3)), ("port", bytes(0, 2))), // 4 and 2 bytes in
+      0
+    ))
+
+    assertEquals(
+      proto.`match`.head.fieldMatchType.exact.get.value, bytes(7),
+      "match field must go on the wire canonical"
+    )
+
+    val params = proto.action.get.`type`.action.get.params
+    assertEquals(
+      params.map(_.value), Seq(bytes(3), bytes(2)),
+      "action params must go on the wire canonical too — this is the half that " +
+      "lives in typegen's emitted code, not in matchFieldToProto"
+    )
+  }
+
   test("canonical strips only leading zeros, from every match type") {
     val lpm = p4rtype.matchFieldToProto(1, LPM(bytes(0, 10, 0, 1), 24))
     assertEquals(lpm.fieldMatchType.lpm.get.value, bytes(10, 0, 1))
