@@ -509,14 +509,50 @@ verified free of `quackmpp/` entries.
    scoped to this repo with Contents: read/write and Pull requests: read/write,
    and add it as `STEWARD_TOKEN`.
 
-11. **P4R-Type cannot install a forwarding pipeline.** There is no
-   `SetForwardingPipelineConfig` anywhere in `src/main/scala/api/` — the API is
-   connect / insert / read / write / delete. The mininet VM loads the pipeline out
-   of band, which is why this was never felt. QuackMPP spec 003 regenerates types
-   after a p4info change; *deploying* that change needs a capability this library
-   does not have, so QuackMPP must either add it or drive
-   `p4.v1.p4runtime.*` directly. This is also what stops `Bmv2WireSuite` from
-   doing a full table-entry round trip. See [ARCHITECTURE.md](ARCHITECTURE.md) §7.
+11. ~~**P4R-Type cannot install a forwarding pipeline.**~~ Fixed. `p4rtype`
+   now exposes:
+   ```scala
+   def setForwardingPipelineConfig(c: Chan[_,_,_], p4info: P4Info,
+                                   p4DeviceConfig: ByteString,
+                                   action: SetForwardingPipelineConfigRequest.Action =
+                                     VERIFY_AND_COMMIT): Either[String, Unit]
+   def getForwardingPipelineConfig(c: Chan[_,_,_]): Either[String, ForwardingPipelineConfig]
+   ```
+   Both return the target's error rather than `write`'s bare `false`: a pipeline
+   push is exactly where a switch tells you what it objected to, and a boolean
+   throws that away. Verified against a real bmv2 by `Bmv2PipelineSuite`, which
+   pushes the pipeline, inserts a `bucket` entry through the generated types, and
+   reads it back — the round trip nothing could do before. Run it with
+   `container/p4rt.sh pipeline-test`.
+
+12. **P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
+    read-write symmetry.** Found by the round trip above, against a real switch.
+
+    Write `Exact(bytes(0, 7))` for a `bit<16>` field and the switch returns
+    `Exact(bytes(7))` — one byte. That is not bmv2 being lax; it is the spec's
+    canonical binary string, "the shortest string that fits the encoded integer
+    value". The switch canonicalises; `p4rtype.matchFieldToProto` passes whatever
+    you built with `bytes(...)` through untouched.
+
+    The spec asks for read-write symmetry and its normative pseudocode is
+    literally this:
+    ```python
+    status         = server.write(intended_value, p4_entity)
+    observed_value = server.read(p4_entity)
+    assert(intended_value == observed_value)   # fails with P4R-Type
+    ```
+    and it says canonical lengths "promote P4Runtime read-write symmetry in both
+    client-to-server requests and server-to-client responses" — i.e. the client
+    is meant to canonicalise too.
+
+    **This will bite QuackMPP**: a controller that compares a read-back entry to
+    the one it wrote gets a spurious mismatch. Not fixed here because it changes
+    the behaviour of an existing published API. The fix is contained — canonicalise
+    in `matchFieldToProto` and the action-param path: strip leading zero bytes,
+    with `V=0` encoding as a single `0x00` (the spec defines zero as needing one
+    bit, hence one byte). The existing examples are unaffected (`bytes(10,0,1,1)`,
+    `bytes(8,0,0,0,1,17)` are already canonical). `Bmv2PipelineSuite` pins the
+    current behaviour and will tell you when it changes.
 
 ## 9. Working on this build — two traps
 

@@ -10,6 +10,7 @@
 #   ./p4rt.sh gen        regenerate the p4info fixture with current p4c
 #   ./p4rt.sh gen-vm     ...with the p4c the mininet VM ships (1.2.4.x)
 #   ./p4rt.sh test       up + run Bmv2WireSuite against it
+#   ./p4rt.sh pipeline-test  up + push a pipeline + insert/read a table entry
 #
 # Override the runtime with RUNTIME=docker|container.
 set -euo pipefail
@@ -104,6 +105,21 @@ case "${1:-}" in
     # sbt's server outlives your shell and Test/fork inherits its environment at
     # start, so P4RT_BMV2 must be set for a *fresh* server — hence the shutdown.
     ( cd "$PROJ" && P4RT_BMV2="localhost:$PORT" sbt "testOnly *Bmv2WireSuite" )
+    ;;
+
+  pipeline-test)
+    # The full loop: install a pipeline, insert a table entry, read it back.
+    # Needs the compiled dataplane (quackmpp.json), which p4c writes next to the
+    # .p4 — build it if it is not there.
+    if [ ! -f "$P4DIR/quackmpp.json" ]; then
+      echo "compiling quackmpp.p4 for bmv2..."
+      run_rm -v "$P4DIR:/w" -w /w "$P4C_IMAGE" \
+        sh -c 'p4c --target bmv2 --arch v1model -o /w /w/quackmpp.p4'
+    fi
+    "$0" up
+    ( cd "$PROJ" && sbt shutdown >/dev/null 2>&1 || true )
+    ( cd "$PROJ" && P4RT_BMV2="localhost:$PORT" P4RT_BMV2_JSON="$P4DIR/quackmpp.json" \
+        sbt "testOnly *Bmv2PipelineSuite" )
     ;;
 
   *)

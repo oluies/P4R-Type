@@ -41,15 +41,16 @@ graph LR
   gentypes --> ctrl
   api --> ctrl
   ctrl -->|"P4Runtime gRPC :9559"| switch
-  bmjson -.->|"loaded into the switch<br/>(NOT via P4R-Type, see gap 1)"| switch
+  bmjson -->|"setForwardingPipelineConfig"| switch
   pb --- api
 
   classDef ext fill:#f6f6f6,stroke:#bbb,stroke-dasharray:4 3,color:#555;
 ```
 
-The dotted edge is the first architectural gap: **P4R-Type has no
-`SetForwardingPipelineConfig`**, so it cannot install a pipeline. Something else
-must load `quackmpp.json` into the switch (the mininet VM does this out of band).
+Both edges into the switch are P4R-Type's now: `setForwardingPipelineConfig`
+installs `quackmpp.json` + the p4info, and the `p4rtype` API writes table entries
+over the same channel. (The mininet VM still loads its own pipelines out of band —
+that predates the API having the capability.)
 
 ## 2. The guarantee QuackMPP spec 003 depends on
 
@@ -142,7 +143,7 @@ Two traps encoded here, both learned the hard way:
 
 ## 4. Testing: what is actually verified
 
-Most of the suite is compile-and-typecheck. Only `Bmv2WireSuite` touches a wire.
+Most of the suite is compile-and-typecheck. Two suites touch a real switch.
 
 ```mermaid
 graph TD
@@ -150,16 +151,24 @@ graph TD
   t2["p4info-fixture CI job<br/>real p4c vs committed fixture"]
   t3["Bmv2WireSuite<br/>gRPC against real bmv2"]
   t4["examples/compile<br/>examples still build"]
+  t5["Bmv2PipelineSuite<br/>push pipeline + insert/read a table entry"]
 
   t1 -->|"no container"| fast["Runs in testFull<br/>always"]
   t4 --> fast
   t2 -->|"p4lang/p4c container"| ci["CI job"]
-  t3 -->|"needs P4RT_BMV2 set<br/>p4lang/behavioral-model"| opt["Skipped unless<br/>P4RT_BMV2=host:port"]
+  t3 -->|"needs P4RT_BMV2"| opt["Skipped unless<br/>the env vars are set"]
+  t5 -->|"needs P4RT_BMV2<br/>+ P4RT_BMV2_JSON"| opt
 ```
 
 `Bmv2WireSuite` is what turns [UPGRADE.md](UPGRADE.md) §5 from an argument into a
 measurement — bmv2 answers `p4runtime_api_version = 1.3.0`, confirming the switch
 is pre-v1.4.0 and that a v1.5.0 client can still drive it.
+
+`Bmv2PipelineSuite` (`container/p4rt.sh pipeline-test`) does the full loop that
+`setForwardingPipelineConfig` made possible: install the pipeline, insert a
+`bucket` entry through the generated types, read it back. It is also what found
+the canonicalisation gap ([UPGRADE.md](UPGRADE.md) §8.12) — the kind of thing only
+a real switch tells you.
 
 ## 5. Running the containers
 
@@ -186,7 +195,8 @@ Apple's `container` has **no compose support** (`container compose` → *"Plugin
 
 ```bash
 container/p4rt.sh up        # bmv2 on localhost:9559, waits until it answers
-container/p4rt.sh test      # up + run Bmv2WireSuite against it
+container/p4rt.sh test           # up + run Bmv2WireSuite against it
+container/p4rt.sh pipeline-test  # up + push a pipeline + insert/read a table entry
 container/p4rt.sh gen       # regenerate the p4info fixture with current p4c
 container/p4rt.sh gen-vm    # ...with the p4c line the mininet VM ships (§6)
 container/p4rt.sh down
@@ -274,10 +284,16 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
 
 ## 7. Known architectural gaps
 
-1. **No `SetForwardingPipelineConfig`.** The API is connect / insert / read /
-   write / delete only, so P4R-Type cannot install a pipeline — something else has
-   to. QuackMPP's spec 003 regenerates types after a p4info change; deploying that
-   change needs a capability this library does not have.
+1. ~~**No `SetForwardingPipelineConfig`.**~~ Added — `setForwardingPipelineConfig`
+   / `getForwardingPipelineConfig`, verified against a real bmv2 by
+   `Bmv2PipelineSuite` (`container/p4rt.sh pipeline-test`), which pushes a
+   pipeline, inserts a `bucket` entry and reads it back.
+
+   But note the gap it exposed: **P4R-Type does not canonicalise binary strings**,
+   so `write` then `read` does not round-trip a value — you write `bytes(0, 7)`
+   and get `bytes(7)` back. That breaks the read-write symmetry P4Runtime asks
+   for, and a controller diffing read-back state against intent will see spurious
+   mismatches. [UPGRADE.md](UPGRADE.md) §8.12.
 2. **No multicast or clone-session modelling.** `Replica`, `MulticastGroupEntry`
    and `CloneSessionEntry` exist in the generated bindings but not in the
    `p4rtype` API. An MPP fabric replicating across workers builds on

@@ -14,6 +14,10 @@ import p4.v1.p4runtime.Entity
 import p4.v1.p4runtime.WriteRequest
 import p4.v1.p4runtime.Update
 import p4.v1.p4runtime.Uint128
+import p4.v1.p4runtime.SetForwardingPipelineConfigRequest
+import p4.v1.p4runtime.GetForwardingPipelineConfigRequest
+import p4.v1.p4runtime.ForwardingPipelineConfig
+import p4.config.v1.p4info.P4Info
 import scala.concurrent.Await
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.duration.SECONDS
@@ -189,6 +193,78 @@ def write [TM[_], TA[_], TP[_]]
   catch
     case _ =>
       false
+
+/** Installs a forwarding pipeline on the target.
+  *
+  * Until this existed, P4R-Type could read and write table entries but could not
+  * put a pipeline on a switch, so something outside it had to (the mininet VM
+  * does this out of band). A controller that regenerates its types from a
+  * changed p4info needs to deploy that change too, not just compile against it.
+  *
+  * Unlike `write`, this returns the failure rather than a bare `false`. A
+  * pipeline push is where a target reports what it actually objected to — a
+  * p4info the switch rejects, a device config for the wrong target, an election
+  * id that lost arbitration — and collapsing that to a boolean throws away the
+  * only useful part.
+  *
+  * @param c The channel used to communicate with the target device.
+  * @param p4info The P4Info, as produced by p4c's `--p4runtime-files`.
+  * @param p4DeviceConfig The target-specific binary. For bmv2 this is the
+  *   contents of the `.json` p4c writes alongside the p4info; other targets
+  *   expect something else entirely.
+  * @param action What the target should do with the config. Defaults to
+  *   VERIFY_AND_COMMIT, i.e. check it and make it live.
+  * @return Unit on success, or the target's error message.
+  */
+def setForwardingPipelineConfig
+  (c : Chan[_, _, _],
+   p4info : P4Info,
+   p4DeviceConfig : ByteString,
+   action : SetForwardingPipelineConfigRequest.Action =
+     SetForwardingPipelineConfigRequest.Action.VERIFY_AND_COMMIT) : Either[String, Unit] =
+  val resp = c.getSocket().setForwardingPipelineConfig(
+    SetForwardingPipelineConfigRequest(
+      deviceId = c.getDeviceId(),
+      // Must match the arbitration `connect` performed, or the target rejects
+      // the push as coming from a non-primary controller.
+      electionId = Some(Uint128(high = 0, low = 1)),
+      action = action,
+      config = Some(ForwardingPipelineConfig(
+        p4Info = Some(p4info),
+        p4DeviceConfig = p4DeviceConfig
+      ))
+    )
+  )
+  try
+    Await.ready(resp, FiniteDuration(30, SECONDS)).value match
+      case Some(scala.util.Success(_)) => Right(())
+      case Some(scala.util.Failure(e)) => Left("SetForwardingPipelineConfig failed: " + e.getMessage)
+      case None                        => Left("SetForwardingPipelineConfig timed out after 30s")
+  catch
+    case e : Throwable => Left("SetForwardingPipelineConfig failed: " + e.getMessage)
+
+/** Reads back the forwarding pipeline currently installed on the target.
+  *
+  * Useful to confirm a push landed, and to discover what a switch is already
+  * running.
+  *
+  * @param c The channel used to communicate with the target device.
+  * @return The installed config, or the target's error message. A target with no
+  *   pipeline installed reports that as an error (bmv2 answers FAILED_PRECONDITION).
+  */
+def getForwardingPipelineConfig
+  (c : Chan[_, _, _]) : Either[String, ForwardingPipelineConfig] =
+  val resp = c.getSocket().getForwardingPipelineConfig(
+    GetForwardingPipelineConfigRequest(deviceId = c.getDeviceId())
+  )
+  try
+    Await.ready(resp, FiniteDuration(30, SECONDS)).value match
+      case Some(scala.util.Success(r)) =>
+        r.config.toRight("target returned no config")
+      case Some(scala.util.Failure(e)) => Left("GetForwardingPipelineConfig failed: " + e.getMessage)
+      case None                        => Left("GetForwardingPipelineConfig timed out after 30s")
+  catch
+    case e : Throwable => Left("GetForwardingPipelineConfig failed: " + e.getMessage)
 
 /** Inserts a table entry into a table.
   *
