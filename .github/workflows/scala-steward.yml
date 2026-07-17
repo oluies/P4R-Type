@@ -47,7 +47,17 @@ jobs:
       #
       #    It falls back to GITHUB_TOKEN if unset so the workflow still runs —
       #    but the PRs it opens will NOT be CI-gated. See UPGRADE.md §8.10.
+      #
+      # 3. author-name / author-email are required here, not optional. Steward
+      #    derives the commit author from the token's account, and this account
+      #    has GitHub's email privacy feature on — so it fails outright with
+      #    "Unable to find author's email" and opens nothing. Using the
+      #    @users.noreply.github.com address keeps that privacy setting intact;
+      #    the alternative the error suggests (exposing a real address on the
+      #    account) would defeat it.
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
           github-token: ${{ secrets.STEWARD_TOKEN || secrets.GITHUB_TOKEN }}
+          author-name: Örjan Lundberg
+          author-email: 150961+oluies@users.noreply.github.com
