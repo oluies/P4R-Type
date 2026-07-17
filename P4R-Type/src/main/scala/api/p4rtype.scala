@@ -33,13 +33,40 @@ case class Optional(v : ByteString)
 
 type MatchFieldType = Exact | LPM | Range | Ternary | Optional
 
+/** Converts a binary string to P4Runtime's canonical representation: "the
+  * shortest string that fits the encoded integer value".
+  *
+  * P4Runtime represents P4 integers as `bytes`, and a value has many valid
+  * encodings -- 0x00,0x63 and 0x63 are both a valid `bit<16>` 99, and a
+  * receiver accepts either (the spec puts no maximum length on a received
+  * string). But only the shortest has **read-write symmetry**: servers reply
+  * with the canonical form, so a client that writes a longer one reads back
+  * something different from what it wrote. The spec's table of valid
+  * encodings marks `bit<16>` 99 as 0x00,0x63 -> symmetry "no"; 0x63 -> "yes".
+  *
+  * Concretely: without this, `insert` an `Exact(bytes(0, 7))` and `read` it back
+  * and you get `Exact(bytes(7))` — a controller diffing observed state against
+  * intent sees a spurious mismatch.
+  *
+  * Unsigned only, which is all this is used for: the spec excludes `int<W>` from
+  * table key fields and action parameters in P4Runtime v1, so there is no sign
+  * extension to undo. Zero encodes as a single `0x00`, not the empty string —
+  * the spec defines zero as needing one bit (hence one byte), and "if the
+  * string's byte length is zero, the server always rejects the string".
+  */
+def canonical(v : ByteString) : ByteString =
+  val bs = v.toByteArray
+  var i = 0
+  while i < bs.length - 1 && bs(i) == 0.toByte do i += 1
+  if i == 0 then v else ByteString.copyFrom(bs, i, bs.length - i)
+
 def matchFieldToProto(fieldId : Int, mf : MatchFieldType) : FieldMatch =
   mf match
-    case Exact(v)      => FieldMatch(fieldId, FieldMatchType.Exact(FieldMatch.Exact(value = v)))
-    case LPM(v, pl)    => FieldMatch(fieldId, FieldMatchType.Lpm(FieldMatch.LPM(value = v, prefixLen = pl)))
-    case Range(l, h)   => FieldMatch(fieldId, FieldMatchType.Range(FieldMatch.Range(low = l, high = h)))
-    case Ternary(v, m) => FieldMatch(fieldId, FieldMatchType.Ternary(FieldMatch.Ternary(value = v, mask = m)))
-    case Optional(v)   => FieldMatch(fieldId, FieldMatchType.Optional(FieldMatch.Optional(value = v)))
+    case Exact(v)      => FieldMatch(fieldId, FieldMatchType.Exact(FieldMatch.Exact(value = canonical(v))))
+    case LPM(v, pl)    => FieldMatch(fieldId, FieldMatchType.Lpm(FieldMatch.LPM(value = canonical(v), prefixLen = pl)))
+    case Range(l, h)   => FieldMatch(fieldId, FieldMatchType.Range(FieldMatch.Range(low = canonical(l), high = canonical(h))))
+    case Ternary(v, m) => FieldMatch(fieldId, FieldMatchType.Ternary(FieldMatch.Ternary(value = canonical(v), mask = canonical(m))))
+    case Optional(v)   => FieldMatch(fieldId, FieldMatchType.Optional(FieldMatch.Optional(value = canonical(v))))
 
 case class TableEntry [TM[_], TA[_], TP[_], XN, XA <: TA[XN]] private (table : XN, matches : TM[XN], action : XA, params : TP[XA], priority : Int)
 

@@ -4,8 +4,8 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 (the OOPSLA artifact) is being brought up to date to serve as the control-plane
 binding library for **QuackMPP**.
 
-Verified on **JDK 25.0.3 / sbt 2.0.2 / Scala 3.8.4**, cold action cache:
-`compile` and `testFull` both green, 8/8 tests passing.
+Verified on **JDK 25.0.3 / sbt 2.0.3 / Scala 3.8.4**, cold action cache:
+`compile` and `testFull` both green, 12/12 tests passing.
 
 ---
 
@@ -22,7 +22,7 @@ So the upgrade was not optional — there was no working baseline to regress aga
 
 | Component | Before | After |
 | --- | --- | --- |
-| sbt | 1.7.1 | **2.0.2** |
+| sbt | 1.7.1 | **2.0.3** |
 | Scala | 3.1.3 | **3.8.4** (Next track) |
 | JDK | unpinned (broken on 25/26) | **25 LTS** (CI-pinned) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
@@ -34,7 +34,7 @@ So the upgrade was not optional — there was no working baseline to regress aga
 | zio-streams | (transitive) | **removed** (see §4) |
 | grpc-netty | 1.41.0 (and 1.41.0 again) | **1.82.2** |
 | protobuf-java | (via ScalaPB 0.11.11) | **4.35.0** (via ScalaPB alpha.6) |
-| protobuf-java-util | — | **4.35.0** (new: p4info JSON parsing) |
+| protobuf-java-util | — | **4.35.1** (new: p4info JSON parsing) |
 | munit | 0.7.29 | **1.3.4** |
 | sbt-bloop (`project/metals.sbt`) | 1.5.8, committed | **removed + gitignored** |
 | P4Runtime protos | ~v1.3-era | **v1.5.0** (see §5) |
@@ -131,13 +131,14 @@ Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
 
 Re-checked on Maven at the time of writing: nothing newer exists on either
 (`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
-1.0.0-alpha.6). sbt itself is still 2.0.2.
+1.0.0-alpha.6). sbt is now 2.0.3 — released mid-upgrade, and landed via Scala
+Steward's own gated PR, which is the setup working exactly as intended.
 
-### Recommendation: stay on sbt 2.0.2
+### Recommendation: stay on sbt 2.x
 
 The fragility that justified the escape hatch is gone. What is left is two
 pre-release *versions* rather than an unresolvable *conflict*: no override, no
-eviction warning, no cross-alpha gamble — and 8/8 tests green on a cold JDK 25
+eviction warning, no cross-alpha gamble — and 12/12 tests green on a cold JDK 25
 build.
 
 **sbt 1.12.13 remains a clean fallback** and is worth taking if the RC/alpha
@@ -525,42 +526,33 @@ verified free of `quackmpp/` entries.
    reads it back — the round trip nothing could do before. Run it with
    `container/p4rt.sh pipeline-test`.
 
-12. **P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
-    read-write symmetry.** Found by the round trip above, against a real switch.
+12. ~~**P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
+    read-write symmetry.**~~ Fixed. `p4rtype.canonical` strips leading zero bytes,
+    and `matchFieldToProto` applies it to every match type while `typegen` now
+    emits `p4rtype.canonical(...)` around action parameters.
 
-    Write `Exact(bytes(0, 7))` for a `bit<16>` field and the switch returns
-    `Exact(bytes(7))` — one byte. That is not bmv2 being lax; it is the spec's
-    canonical binary string, "the shortest string that fits the encoded integer
-    value". The switch canonicalises; `p4rtype.matchFieldToProto` passes whatever
-    you built with `bytes(...)` through untouched.
-
-    The spec asks for read-write symmetry and its normative pseudocode is
-    literally this:
+    The defect, for the record: we wrote `Exact(bytes(0, 7))` for a `bit<16>`
+    field and the switch returned `Exact(bytes(7))`. Not bmv2 being lax — a
+    receiver imposes no maximum length, so the 2-byte form is *valid*. It simply
+    is not canonical, and the spec's table of valid encodings marks `bit<16>` 99
+    as `0x00 0x63` -> read-write symmetry "no", `0x63` -> "yes". Servers reply
+    canonical, so writing a longer form meant reading back something else, and
+    the spec's own pseudocode failed:
     ```python
     status         = server.write(intended_value, p4_entity)
     observed_value = server.read(p4_entity)
-    assert(intended_value == observed_value)   # fails with P4R-Type
+    assert(intended_value == observed_value)   # now passes
     ```
-    and it says canonical lengths "promote P4Runtime read-write symmetry in both
-    client-to-server requests and server-to-client responses" — i.e. the client
-    is meant to canonicalise too.
+    Verified against a real bmv2 — `Bmv2PipelineSuite` asserts the switch returns
+    exactly what went on the wire — plus unit tests on the write path that need no
+    switch. Two details worth keeping: zero encodes as a single `0x00`, not the
+    empty string (the spec defines zero as needing one bit, and "if the string's
+    byte length is zero, the server always rejects the string"); and only
+    *leading* zeros go, so `bytes(10, 0, 1, 1)` survives intact.
 
-    **This will bite QuackMPP**: a controller that compares a read-back entry to
-    the one it wrote gets a spurious mismatch. Not fixed here because it changes
-    the behaviour of an existing published API. The fix is contained — canonicalise
-    in `matchFieldToProto` and the action-param path: strip leading zero bytes,
-    with `V=0` encoding as a single `0x00` (the spec defines zero as needing one
-    bit, hence one byte). The existing examples are unaffected (`bytes(10,0,1,1)`,
-    `bytes(8,0,0,0,1,17)` are already canonical).
-
-    Pinned by a tripwire in `QuackMppTypegenSuite` that asserts the *bug* —
-    `matchFieldToProto` emitting the non-canonical bytes — so it fails the moment
-    the fix lands, with instructions to invert it. It inspects P4R-Type's own
-    write path rather than what a switch returns, which is the only way to see
-    this: a switch canonicalises whether or not we do, so `Bmv2PipelineSuite`'s
-    read-back value is identical before and after the fix and cannot detect it.
-    Checking the write path also means the tripwire runs in CI, no bmv2 needed.
-    Mutation-tested: adding canonicalisation makes it fail as intended.
+    Unsigned only, which is sufficient: P4Runtime v1 excludes `int<W>` from table
+    key fields and action parameters, so there is no sign extension to undo. If
+    `P4Data` support ever arrives, signed values need the other half of the rule.
 
 ## 9. Working on this build — two traps
 

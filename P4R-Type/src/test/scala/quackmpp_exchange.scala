@@ -59,7 +59,7 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
         case ("*", _) => Seq.empty
         case ("NoAction", _) => Seq.empty
         case ("QuackMPP.drop", _) => Seq.empty
-        case ("QuackMPP.set_worker", (("worker_id", p0), ("port", p1)) : (("worker_id", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
+        case ("QuackMPP.set_worker", (("worker_id", p0), ("port", p1)) : (("worker_id", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
 
     TableEntry(
     tableId = tableId,

@@ -63,7 +63,7 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
         case ("*", _) => Seq.empty
         case ("NoAction", _) => Seq.empty
         case ("Process.drop", _) => Seq.empty
-        case ("Process.forward_packet", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
+        case ("Process.forward_packet", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
 
     TableEntry(
     tableId = tableId,
@@ -118,13 +118,12 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
       1
     ).asInstanceOf[p4rtype.TableEntry[TM, TA, TP, XN, XA]]
 
-/**
- * Connect to a P4Runtime server.
- * @param id The device ID, which is assigned by the controller (i.e. the caller), and should be unique for each controller.
- * @param ip IP address of the target device.
- * @param port Port number of the target device.
- * @return A `Chan` object used by the other P4R-Type API functions for communication.
- */
+/** Connect to a P4Runtime server.
+  * @param id The device ID, which is assigned by the controller (i.e. the caller), and should be unique for each controller.
+  * @param ip IP address of the target device.
+  * @param port Port number of the target device.
+  * @return A `Chan` object used by the other P4R-Type API functions for communication.
+  */
 def connect(id : Int, ip : String, port : Int) : Chan =
   val channel = ManagedChannelBuilder.forAddress(ip, port).usePlaintext().build()
   val request = StreamMessageRequest(
@@ -140,3 +139,5 @@ def connect(id : Int, ip : String, port : Int) : Chan =
   val request_obs = stub.streamChannel(response_obs)
   request_obs.onNext(request)
   Chan(id, stub, channel)
+
+

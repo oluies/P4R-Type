@@ -94,17 +94,19 @@ class Bmv2PipelineSuite extends munit.FunSuite {
     assertEquals(field, "meta.quack.bucket")
     assertEquals(found.head.action, "QuackMPP.set_worker")
 
-    // We wrote bytes(0, 7) — two bytes for a bit<16> field — and the switch
-    // returns ONE byte, 0x07. That is not bmv2 being lax; it is the P4Runtime
-    // canonical binary string: "the shortest string that fits the encoded
-    // integer value". The switch canonicalises, P4R-Type does not, so
-    // write-then-read does not round-trip the value (UPGRADE.md §8.12).
+    // Read-write symmetry, which is the point of canonicalising on write: we
+    // asked for bucket 7 and the switch hands back exactly that. Before
+    // p4rtype.canonical existed we wrote bytes(0, 7) and read bytes(7), and a
+    // controller diffing observed state against intent saw a phantom change.
     //
-    // This assertion only records what the *switch* returns, and the switch
-    // returns the canonical form whether or not P4R-Type is fixed — so it is a
-    // observation, NOT a tripwire for §8.12. The tripwire is in
-    // QuackMppTypegenSuite, which inspects P4R-Type's own write path and needs
-    // no switch to do it.
-    assertEquals(m.v, bytes(7), "expected the switch's canonical 1-byte form")
+    // This is the spec's own pseudocode, and it now holds:
+    //     status         = server.write(intended_value, p4_entity)
+    //     observed_value = server.read(p4_entity)
+    //     assert(intended_value == observed_value)
+    assertEquals(m.v, bytes(7), "the switch's canonical form")
+    assertEquals(
+      m.v, p4rtype.canonical(bytes(0, 7)),
+      "read-write symmetry: the switch returns exactly what we put on the wire"
+    )
   }
 }

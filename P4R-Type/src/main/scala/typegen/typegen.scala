@@ -296,7 +296,11 @@ def genParamsToProto(actions : Seq[P4InfoAction]) : Either[String, String] = for
             .map((p,idx) => "(\"" + p.name + "\", p" + idx + ")")
             .reduce((p1, p2) => p1 + ", " + p2)
           val paramCaseResult = paramsIndexed
-            .map((p,idx) => "Seq(Param(paramId = " + p.id + ", value = p" + idx + "))")
+            // p4rtype.canonical, for the same reason matchFieldToProto uses it:
+            // action parameters are bit<W> binary strings, and only the shortest
+            // encoding has read-write symmetry. Without it, writing an 8-byte
+            // worker_id and reading it back returns a shorter one.
+            .map((p,idx) => "Seq(Param(paramId = " + p.id + ", value = p4rtype.canonical(p" + idx + ")))")
             .reduce((p1, p2) => p1 + " ++ " + p2)
           Right("        case (\"" + preamble.name + "\", (" + paramCaseVars + ") : (" + paramTypes + ")) => " + paramCaseResult)
         else

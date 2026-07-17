@@ -63,7 +63,7 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
         case ("*", _) => Seq.empty
         case ("NoAction", _) => Seq.empty
         case ("Process.drop", _) => Seq.empty
-        case ("Process.ipv4_forward", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
+        case ("Process.ipv4_forward", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
 
     TableEntry(
     tableId = tableId,
@@ -139,3 +139,5 @@ def connect(id : Int, ip : String, port : Int) : Chan =
   val request_obs = stub.streamChannel(response_obs)
   request_obs.onNext(request)
   Chan(id, stub, channel)
+
+

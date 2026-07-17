@@ -5,7 +5,7 @@
 // no real consumer could, so it would prove nothing about the thing that matters.
 package p4rtype.consumertest
 
-import p4rtype.{Exact, TableEntry, bytes}
+import p4rtype.{Exact, LPM, Range, Ternary, Optional, TableEntry, bytes}
 import quackmpp.{TableMatchFields, TableAction, ActionParams}
 import typegen.generate
 
@@ -94,33 +94,55 @@ class QuackMppTypegenSuite extends munit.FunSuite {
         )
   }
 
-  /** TRIPWIRE for UPGRADE.md §8.12 — P4R-Type does not canonicalise binary
-    * strings, so `write` then `read` does not round-trip a value.
+  /** P4R-Type emits canonical binary strings, which is what gives P4Runtime
+    * read-write symmetry: a server replies with the canonical form, so a client
+    * that writes a longer encoding reads back something different from what it
+    * wrote (was UPGRADE.md §8.12).
     *
-    * This looks at P4R-Type's own write path rather than at what a switch
-    * returns, which is the only way to see the defect: a switch canonicalises
-    * whether or not we do, so `Bmv2PipelineSuite`'s observation of the read-back
-    * value is identical before and after the fix and cannot detect it. Checking
-    * `matchFieldToProto` also means this runs in CI, with no bmv2 involved.
-    *
-    * It asserts the BUG. When someone fixes §8.12 this test fails, which is the
-    * point — it is the reminder to invert it and to revisit `Bmv2PipelineSuite`.
+    * These check the *write path* rather than what a switch returns, which is
+    * the only place the property is visible: a switch canonicalises regardless,
+    * so a read-back value looks the same either way. That also means they run in
+    * CI with no bmv2.
     */
-  test("§8.12 tripwire: matchFieldToProto does NOT canonicalise (asserts the bug)") {
+  test("matchFieldToProto canonicalises: leading zero bytes are stripped") {
     val fm = p4rtype.matchFieldToProto(1, Exact(bytes(0, 7)))
-    val onTheWire = fm.fieldMatchType.exact.get.value
-
     assertEquals(
-      onTheWire, bytes(0, 7),
-      "P4R-Type now canonicalises on write — §8.12 is FIXED. Invert this test " +
-      "(expect bytes(7)), and update Bmv2PipelineSuite and UPGRADE.md §8.12."
+      fm.fieldMatchType.exact.get.value, bytes(7),
+      "bit<16> 99 must go on the wire as the shortest string; the spec's own " +
+      "table marks the 2-byte form as read-write symmetry: no"
     )
-    // Spelling out what is wrong with the above: P4Runtime's canonical form for
-    // this value is one byte, and the spec asks clients to send canonical.
-    assertNotEquals(
-      onTheWire, bytes(7),
-      "this is the canonical form the spec wants; if we emit it, §8.12 is fixed"
-    )
+  }
+
+  test("canonical leaves an already-canonical value alone") {
+    // The examples rely on this: bytes(10,0,1,1) is an IPv4 address whose
+    // interior zero must survive — only *leading* zeros go.
+    assertEquals(p4rtype.canonical(bytes(10, 0, 1, 1)), bytes(10, 0, 1, 1))
+    assertEquals(p4rtype.canonical(bytes(0x30, 0x64)), bytes(0x30, 0x64))
+  }
+
+  test("canonical encodes zero as one byte, not the empty string") {
+    // The spec defines zero as needing one bit, hence one byte, and says a
+    // zero-length string is always rejected by the server. Dropping every zero
+    // byte would produce exactly that rejected encoding.
+    assertEquals(p4rtype.canonical(bytes(0, 0, 0, 0)), bytes(0))
+    assertEquals(p4rtype.canonical(bytes(0)), bytes(0))
+  }
+
+  test("canonical strips only leading zeros, from every match type") {
+    val lpm = p4rtype.matchFieldToProto(1, LPM(bytes(0, 10, 0, 1), 24))
+    assertEquals(lpm.fieldMatchType.lpm.get.value, bytes(10, 0, 1))
+    assertEquals(lpm.fieldMatchType.lpm.get.prefixLen, 24, "prefixLen is untouched")
+
+    val tern = p4rtype.matchFieldToProto(1, Ternary(bytes(0, 7), bytes(0, 0xff.toByte)))
+    assertEquals(tern.fieldMatchType.ternary.get.value, bytes(7))
+    assertEquals(tern.fieldMatchType.ternary.get.mask, bytes(0xff.toByte))
+
+    val rng = p4rtype.matchFieldToProto(1, Range(bytes(0, 1), bytes(0, 9)))
+    assertEquals(rng.fieldMatchType.range.get.low, bytes(1))
+    assertEquals(rng.fieldMatchType.range.get.high, bytes(9))
+
+    val opt = p4rtype.matchFieldToProto(1, Optional(bytes(0, 0, 5)))
+    assertEquals(opt.fieldMatchType.optional.get.value, bytes(5))
   }
 
   test("generate reports malformed p4info JSON as a Left rather than throwing") {

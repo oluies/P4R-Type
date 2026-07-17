@@ -57,7 +57,7 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
         case ("*", _) => Seq.empty
         case (_, _ : "*") => Seq.empty
         case ("Process.nat_ingress", (t0, (_, t1))) => t0.asInstanceOf[Option[("hdr.ipv4.dstAddr", LPM)]].map((_, t) => p4rtype.matchFieldToProto(1, t)).toSeq ++ Seq(p4rtype.matchFieldToProto(2, t1.asInstanceOf[Exact]))
-        case ("Process.nat_egress", (t0, (_, t1))) => t0.asInstanceOf[Option[("hdr.ipv4.srcAddr", LPM)]].map((_, t) => p4rtype.matchFieldToProto(1, t)).toSeq ++ Seq(p4rtype.matchFieldToProto(2,  t1.asInstanceOf[Exact]))
+        case ("Process.nat_egress", (t0, (_, t1))) => t0.asInstanceOf[Option[("hdr.ipv4.srcAddr", LPM)]].map((_, t) => p4rtype.matchFieldToProto(1, t)).toSeq ++ Seq(p4rtype.matchFieldToProto(2, t1.asInstanceOf[Exact]))
         case ("Process.firewall", (t0)) => t0.asInstanceOf[Option[("hdr.ipv4.dstAddr", LPM)]].map((_, t) => p4rtype.matchFieldToProto(1, t)).toSeq
         case ("Process.ipv4_table", (t0)) => t0.asInstanceOf[Option[("hdr.ipv4.dstAddr", LPM)]].map((_, t) => p4rtype.matchFieldToProto(1, t)).toSeq
 
@@ -75,9 +75,9 @@ class Chan (deviceId : Int, socket : P4RuntimeStub, channel : io.grpc.ManagedCha
         case ("*", _) => Seq.empty
         case ("NoAction", _) => Seq.empty
         case ("Process.drop", _) => Seq.empty
-        case ("Process.forward_packet", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
-        case ("Process.nat_translate_in", (("dstAddr", p0), ("dstPort", p1)) : (("dstAddr", ByteString), ("dstPort", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
-        case ("Process.nat_translate_eg", (("srcAddr", p0), ("srcPort", p1)) : (("srcAddr", ByteString), ("srcPort", ByteString))) => Seq(Param(paramId = 1, value = p0)) ++ Seq(Param(paramId = 2, value = p1))
+        case ("Process.forward_packet", (("dstAddr", p0), ("port", p1)) : (("dstAddr", ByteString), ("port", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
+        case ("Process.nat_translate_in", (("dstAddr", p0), ("dstPort", p1)) : (("dstAddr", ByteString), ("dstPort", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
+        case ("Process.nat_translate_eg", (("srcAddr", p0), ("srcPort", p1)) : (("srcAddr", ByteString), ("srcPort", ByteString))) => Seq(Param(paramId = 1, value = p4rtype.canonical(p0))) ++ Seq(Param(paramId = 2, value = p4rtype.canonical(p1)))
 
     TableEntry(
     tableId = tableId,
@@ -161,3 +161,5 @@ def connect(id : Int, ip : String, port : Int) : Chan =
   val request_obs = stub.streamChannel(response_obs)
   request_obs.onNext(request)
   Chan(id, stub, channel)
+
+
