@@ -137,11 +137,16 @@ and never reads `bitwidth`, although the p4info carries it:
     "bitwidth": 32                          # worker_id
     "bitwidth": 9                           # port
 
-So `Exact(bytes(0, 0, 7))` on a `bit<16>` field type-checks and is only rejected
-at the switch, and nothing stops a controller passing 600 to a `bit<9>` port. For
-QuackMPP that is the one that matters: a bucket id overflowing `bit<16>` is a
-silent misroute, not a crash. `priority: Int` is likewise unconstrained even
-though the spec fixes it to 0 for exact-only tables. Both are listed as gaps in §7.
+Note which half of that is a real hole. An over-long *encoding* is harmless:
+`Exact(bytes(0, 0, 7))` on a `bit<16>` field is canonicalised to `bytes(7)` on
+the way out (§7 gap 1), so the switch never sees it. What survives is an
+over-large *value* — `bytes(2, 88)` is 600, which does not fit `bit<9>`, and no
+amount of canonicalising shrinks it. Nothing in the types stops a controller
+constructing that. For QuackMPP it is the one that matters: a bucket id
+overflowing `bit<16>` is a silent misroute, not a crash.
+
+`priority: Int` is likewise unconstrained even though the spec fixes it to 0 for
+exact-only tables. Both are listed as gaps in §7.
 
 There is a real cost to encoding more, and it is already visible. Renaming a match
 field reports *"match type could not be fully reduced"* rather than naming the
@@ -235,11 +240,17 @@ is pre-v1.4.0 and that a v1.5.0 client can still drive it.
 the canonicalisation gap ([UPGRADE.md](UPGRADE.md) §8.12) — the kind of thing only
 a real switch tells you.
 
-That gap is *pinned* elsewhere, though: by a tripwire in `QuackMppTypegenSuite`
-which asserts the bug in `matchFieldToProto` and so fails when the fix lands. A
-switch canonicalises whether or not P4R-Type does, so the read-back value looks
-the same before and after — only the write path shows the defect, and checking it
-needs no switch.
+That gap is now fixed on the write path, and pinned by tests in
+`QuackMppTypegenSuite` that need no switch: unit tests for `canonical` itself,
+plus one driving `Chan.toProto` end to end, which covers the action params
+emitted by `typegen` as well as `matchFieldToProto`. (An earlier *tripwire* here
+asserted the bug so it would fail when the fix landed; it was inverted when the
+fix landed, and this paragraph described it for one commit longer than it
+existed.)
+
+Checking the write path is what needs no switch, and it is also all that can be
+checked: a switch canonicalises whether or not P4R-Type does, so the read-back
+value looks the same either way. See §7 gap 1 for what the fix does *not* cover.
 
 ## 5. Running the containers
 
@@ -360,11 +371,27 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
    `Bmv2PipelineSuite` (`container/p4rt.sh pipeline-test`), which pushes a
    pipeline, inserts a `bucket` entry and reads it back.
 
-   ~~But note the gap it exposed: **P4R-Type does not canonicalise binary
-   strings**, so `write` then `read` does not round-trip a value.~~ Also closed —
+   But note the gap it exposed: **P4R-Type does not canonicalise binary strings**,
+   so `write` then `read` does not round-trip a value. This is **half closed**, and
+   an earlier revision of this list struck it out entirely — an overclaim, corrected
+   here.
+
    `p4rtype.canonical` strips leading zero bytes on the way out, in both halves of
-   the write path (`matchFieldToProto`, and the action params emitted by
-   `typegen`). Read-write symmetry now holds against a live bmv2.
+   the write path (`matchFieldToProto`, and the action params emitted by `typegen`),
+   so **the wire is conformant**. It is not applied on the way in: `fromProto`
+   returns the switch's bytes verbatim, and the caller's `TableEntry` still holds
+   whatever they built. Write an `Exact(bytes(0, 7))`, read back an
+   `Exact(bytes(7))`, and those are unequal in Scala — so a controller diffing
+   observed state against intent still sees a phantom change unless it runs its own
+   intent through `p4rtype.canonical` first (public for exactly that reason).
+
+   **Open decision.** Closing this at the API level means canonicalising at
+   construction, in the `Exact` / `LPM` / `Range` / `Ternary` / `Optional`
+   companions. That is a behavioural change to published types — `Exact(bytes(0,7))`
+   would then `==` `Exact(bytes(7))`, which is the point — and it only covers match
+   fields: action params are bare `ByteString`s inside generated tuples and cannot
+   be intercepted, so that half needs the caller's cooperation regardless. Worth
+   deciding before QuackMPP builds reconciliation on `read`.
    [UPGRADE.md](UPGRADE.md) §8.12.
 2. **No multicast or clone-session modelling.** `Replica`, `MulticastGroupEntry`
    and `CloneSessionEntry` exist in the generated bindings but not in the
@@ -377,14 +404,27 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
    source; the consumer compiles it into its own module. P4R-Type ships the
    mechanism, not anyone's types.
 5. **Bitwidths are not typed.** `typegen` discards `bitwidth` (§2, *The limits of
-   the encoding*), so an over-wide value for a field reaches the switch before
-   anything objects. A `bit<9>` port accepts 600 at compile time. Closing this
-   means emitting a width match type and checking the length of literal
-   `bytes(...)` arguments inline.
+   the encoding*), so an over-large *value* for a field reaches the switch before
+   anything objects: a `bit<9>` port accepts 600 at compile time. Note this is
+   about magnitude, not encoding length — an over-long encoding is canonicalised
+   away by gap 1 and never reaches the switch, so a length check on the literal
+   `bytes(...)` would reject harmless input (`bytes(0,0,7)`) while still missing
+   the real case (`bytes(2, 88)` into a `bit<9>`). The meaningful check compares
+   `canonical(...)`'s length, and the significant bits of its top byte, against
+   the field's bitwidth.
 6. **`priority` is an unconstrained `Int`.** P4Runtime requires 0 for tables whose
    fields are all exact, and nonzero where a ternary/range/optional field is
    present. The p4info knows the match kinds, so this is derivable; today a wrong
    priority is a runtime rejection.
+
+   The repo violates its own rule here: `QuackMppTypegenSuite` builds a
+   `QuackMPP.exchange` entry (exact-only) with `priority = 1`, while
+   `Bmv2PipelineSuite` correctly uses `0`. It is harmless — those entries are
+   constructed to check types and never sent to a switch — and it is left as is
+   deliberately: asserting `priority = 1` round-trips proves the field is threaded
+   through, whereas asserting `0` would still pass if `priority` were dropped
+   entirely. Typing this would break that test, which is the warning worth having
+   recorded rather than the test worth weakening.
 7. **Only tables are typed.** `CounterEntry(counter_id: Int, ...)` is a bare
    integer — no name-based safety, nothing generated from the p4info. The same is
    true of meters and digests. This is the guarantee the paper establishes for

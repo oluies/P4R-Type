@@ -94,19 +94,26 @@ class Bmv2PipelineSuite extends munit.FunSuite {
     assertEquals(field, "meta.quack.bucket")
     assertEquals(found.head.action, "QuackMPP.set_worker")
 
-    // Read-write symmetry, which is the point of canonicalising on write: we
-    // asked for bucket 7 and the switch hands back exactly that. Before
-    // p4rtype.canonical existed we wrote bytes(0, 7) and read bytes(7), and a
-    // controller diffing observed state against intent saw a phantom change.
+    // The switch's canonical form. This is the only thing here the switch can
+    // actually tell us, so it is the only assertion worth making about it.
     //
-    // This is the spec's own pseudocode, and it now holds:
+    // Note what is NOT asserted: `found.head.matches == entry.matches`. That is
+    // literally the spec's pseudocode —
     //     status         = server.write(intended_value, p4_entity)
     //     observed_value = server.read(p4_entity)
     //     assert(intended_value == observed_value)
+    // — and it would FAIL, because `entry` above holds `Exact(bytes(0, 7))`
+    // while the switch returns `Exact(bytes(7))`. p4rtype.canonical runs on the
+    // way out only; it makes the wire conformant, not the caller's intent
+    // object. A controller diffing observed against intended must canonicalise
+    // its own intent first. See ARCHITECTURE.md §7 gap 1.
+    //
+    // A `assertEquals(m.v, p4rtype.canonical(bytes(0, 7)))` used to sit here
+    // claiming to check that symmetry. It could not fail independently of the
+    // line below: canonical is a pure function, recomputed from a literal, with
+    // no switch involved — already covered by QuackMppTypegenSuite. In a suite
+    // gated on P4RT_BMV2, an assertion that needs no bmv2 reads as switch
+    // evidence while being none.
     assertEquals(m.v, bytes(7), "the switch's canonical form")
-    assertEquals(
-      m.v, p4rtype.canonical(bytes(0, 7)),
-      "read-write symmetry: the switch returns exactly what we put on the wire"
-    )
   }
 }

@@ -526,10 +526,11 @@ verified free of `quackmpp/` entries.
    reads it back — the round trip nothing could do before. Run it with
    `container/p4rt.sh pipeline-test`.
 
-12. ~~**P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
-    read-write symmetry.**~~ Fixed. `p4rtype.canonical` strips leading zero bytes,
-    and `matchFieldToProto` applies it to every match type while `typegen` now
-    emits `p4rtype.canonical(...)` around action parameters.
+12. **P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
+    read-write symmetry.** ~~Fixed.~~ **Half fixed** — see the scope note below,
+    which corrects an earlier overclaim here. `p4rtype.canonical` strips leading
+    zero bytes, and `matchFieldToProto` applies it to every match type while
+    `typegen` now emits `p4rtype.canonical(...)` around action parameters.
 
     The defect, for the record: we wrote `Exact(bytes(0, 7))` for a `bit<16>`
     field and the switch returned `Exact(bytes(7))`. Not bmv2 being lax — a
@@ -541,18 +542,39 @@ verified free of `quackmpp/` entries.
     ```python
     status         = server.write(intended_value, p4_entity)
     observed_value = server.read(p4_entity)
-    assert(intended_value == observed_value)   # now passes
+    assert(intended_value == observed_value)
     ```
+
+    **Scope — what this does not fix.** An earlier revision of this entry
+    annotated that `assert` with `# now passes`. It does not, if
+    `intended_value` means the object the caller built. Canonicalisation runs on
+    the way *out* only; `fromProto` returns the switch's bytes verbatim, and the
+    caller's `TableEntry` still holds what they constructed. Write an
+    `Exact(bytes(0, 7))`, read back an `Exact(bytes(7))`, and those are unequal
+    in Scala — which is the symptom this entry originally described, unchanged.
+    What the fix does buy is real but narrower: **the wire is now conformant**,
+    so a switch is no longer being handed a non-canonical encoding, and other
+    P4Runtime clients reading the same entity see what the spec says they should.
+    A controller diffing observed state against intent must run its own intent
+    through `p4rtype.canonical` (public for exactly this reason). Closing it at
+    the API level means canonicalising at construction — in the `Exact` / `LPM` /
+    `Range` / `Ternary` / `Optional` companions — which is a behavioural change
+    to a published type and only covers match fields; action params are bare
+    `ByteString`s inside generated tuples and cannot be intercepted. Left as a
+    decision, recorded as [ARCHITECTURE.md](ARCHITECTURE.md) §7 gap 1.
+
     Verified against a real bmv2 — `Bmv2PipelineSuite` asserts the switch returns
-    exactly what went on the wire — plus tests that need no switch and pin *both*
+    the canonical form — plus tests that need no switch and pin *both*
     halves: `Chan.toProto` reads neither socket nor channel, so it can be driven
     with nulls, which covers the match field and the action params (the second
     half lives in typegen's emitted code, not in `matchFieldToProto`, so a test of
     that function alone would leave it unpinned). Mutation-tested: reverting
     either half fails. Two details worth keeping: zero encodes as a single `0x00`, not the
     empty string (the spec defines zero as needing one bit, and "if the string's
-    byte length is zero, the server always rejects the string"); and only
-    *leading* zeros go, so `bytes(10, 0, 1, 1)` survives intact.
+    byte length is zero, the server always rejects the string" — this includes an
+    *empty input*, `bytes()`, which the first implementation returned unchanged
+    and so emitted the always-rejected encoding); and only *leading* zeros go, so
+    `bytes(10, 0, 1, 1)` survives intact.
 
     Unsigned only, which is sufficient: P4Runtime v1 excludes `int<W>` from table
     key fields and action parameters, so there is no sign extension to undo. If

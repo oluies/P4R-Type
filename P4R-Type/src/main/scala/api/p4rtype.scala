@@ -44,18 +44,27 @@ type MatchFieldType = Exact | LPM | Range | Ternary | Optional
   * something different from what it wrote. The spec's table of valid
   * encodings marks `bit<16>` 99 as 0x00,0x63 -> symmetry "no"; 0x63 -> "yes".
   *
-  * Concretely: without this, `insert` an `Exact(bytes(0, 7))` and `read` it back
-  * and you get `Exact(bytes(7))` — a controller diffing observed state against
-  * intent sees a spurious mismatch.
+  * '''What this does and does not fix.''' It makes the ''wire'' canonical, and
+  * that is all. It is applied on the way out only — in `matchFieldToProto` and in
+  * the action params `typegen` emits — so the caller's own `TableEntry` still
+  * holds whatever they built. Write an `Exact(bytes(0, 7))` and `read` it back
+  * and you still get an `Exact(bytes(7))`, because `fromProto` returns the
+  * switch's bytes verbatim and `Exact(bytes(0, 7)) != Exact(bytes(7))` in Scala.
+  * A controller diffing observed state against intent must therefore run its own
+  * intent through this function first — which is why it is public. See
+  * ARCHITECTURE.md §7 gap 1 for the option of closing that at construction.
   *
   * Unsigned only, which is all this is used for: the spec excludes `int<W>` from
   * table key fields and action parameters in P4Runtime v1, so there is no sign
   * extension to undo. Zero encodes as a single `0x00`, not the empty string —
   * the spec defines zero as needing one bit (hence one byte), and "if the
-  * string's byte length is zero, the server always rejects the string".
+  * string's byte length is zero, the server always rejects the string". That
+  * applies to an empty input too: `bytes()` maps to `bytes(0)`, not back to
+  * itself, so this never emits the encoding the spec says is always rejected.
   */
 def canonical(v : ByteString) : ByteString =
   val bs = v.toByteArray
+  if bs.isEmpty then return ByteString.copyFrom(Array(0.toByte))
   var i = 0
   while i < bs.length - 1 && bs(i) == 0.toByte do i += 1
   if i == 0 then v else ByteString.copyFrom(bs, i, bs.length - i)

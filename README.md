@@ -550,16 +550,20 @@ p4info facts does `typegen` throw away**.
 
 Three candidate extensions, highest value first:
 
-  1. **Bitwidth.** `Exact(bytes(0, 0, 7))` on a `bit<16>` field compiles today and
-     is only rejected at the switch. Worse, `port` is `bit<9>` — maximum 511 — and
-     nothing stops a controller passing 600. Emitting a width match type and
-     checking length at compile time for literal `bytes(...)` calls would close
-     this. For QuackMPP specifically, a bucket id that overflows `bit<16>` is a
-     silent misroute rather than a crash, which makes this the one worth doing.
+  1. **Bitwidth.** The hole is over-large *values*, not over-long encodings: an
+     `Exact(bytes(0, 0, 7))` on a `bit<16>` field is canonicalised to `bytes(7)`
+     on the way out and the switch never sees it. But `port` is `bit<9>` —
+     maximum 511 — and nothing stops a controller passing 600 (`bytes(2, 88)`),
+     which canonicalising cannot shrink. Closing this means emitting a width
+     match type and comparing `canonical(...)`'s length against the bitwidth. For
+     QuackMPP specifically, a bucket id that overflows `bit<16>` is a silent
+     misroute rather than a crash, which makes this the one worth doing.
   2. **Priority.** The P4Runtime spec requires priority 0 on exact-only tables and
      nonzero on tables with a ternary/range/optional field. The p4info knows the
      match kinds; `priority: Int` is currently unconstrained. It could be the
-     singleton type `0` for `QuackMPP.exchange`.
+     singleton type `0` for `QuackMPP.exchange` — which would break
+     `QuackMppTypegenSuite`, whose exchange entry uses `priority = 1`
+     deliberately (see [ARCHITECTURE.md](ARCHITECTURE.md) §7 gap 6).
   3. **Counters, meters, digests.** `CounterEntry(counter_id: Int, ...)` is a bare
      integer with no type safety at all — precisely what the paper eliminated for
      tables, left undone for every other entity kind.

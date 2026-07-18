@@ -108,8 +108,8 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     val fm = p4rtype.matchFieldToProto(1, Exact(bytes(0, 7)))
     assertEquals(
       fm.fieldMatchType.exact.get.value, bytes(7),
-      "bit<16> 99 must go on the wire as the shortest string; the spec's own " +
-      "table marks the 2-byte form as read-write symmetry: no"
+      "bit<16> 7 must go on the wire as the shortest string, bytes(7); the " +
+      "spec's own table marks the 2-byte form as read-write symmetry: no"
     )
   }
 
@@ -126,6 +126,13 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     // byte would produce exactly that rejected encoding.
     assertEquals(p4rtype.canonical(bytes(0, 0, 0, 0)), bytes(0))
     assertEquals(p4rtype.canonical(bytes(0)), bytes(0))
+
+    // The empty string is reachable: `bytes` is varargs, so `Exact(bytes())`
+    // produces it, as does any default-valued proto `bytes` field coming back
+    // through fromProto into a re-written entry. Returning it unchanged would
+    // emit exactly the encoding the spec says a server always rejects — which
+    // the scaladoc promises never happens.
+    assertEquals(p4rtype.canonical(bytes()), bytes(0))
   }
 
   /** Pins what actually goes on the wire, through the whole write path.
