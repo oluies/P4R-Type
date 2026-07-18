@@ -1,6 +1,6 @@
 # Containerised P4 tooling — the fast path next to `vm/`.
 #
-# This is NOT a replacement for vm/. See ARCHITECTURE.md §7 for what each gives
+# This is NOT a replacement for vm/. See ARCHITECTURE.md §6 for what each gives
 # you and how they differ; the short version is that vm/ has mininet and a real
 # 4-switch topology, and this has a single bare switch you can reach on
 # localhost:9559 without VirtualBox.
@@ -69,7 +69,7 @@ services:
   # Use this to check the fixture against VM-era output. Known and verified: it
   # does NOT emit `initialDefaultAction`, so its p4info differs from the
   # committed fixture — but typegen ignores that field, so the *generated types*
-  # are byte-identical either way. See ARCHITECTURE.md §7.
+  # are byte-identical either way. See ARCHITECTURE.md §6.
   p4c-vm:
     image: p4lang/p4c:1.2.4.3
     platform: linux/amd64

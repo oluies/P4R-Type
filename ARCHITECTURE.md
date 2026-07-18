@@ -89,6 +89,71 @@ snippet compiles, and a renamed field does not. A *control* test proves
 `compileErrors` reports nothing for the valid snippet — without it, the negative
 tests would pass even if the harness rejected everything.
 
+### How the dependency is encoded: dependent method types
+
+The match types above are only half the mechanism. They are *indexed by* a table
+name, so something has to connect the index to the table name a caller actually
+passed. That is `TableEntry.apply` in `src/main/scala/api/p4rtype.scala`:
+
+```scala
+def apply[TM[_], TA[_], TP[_]](
+  table: String, matches: TM[table.type], action: TA[table.type],
+  params: TP[action.type], priority: Int)
+```
+
+This is a **dependent method type**: the type of `matches` mentions `table.type`,
+the singleton type of the *value* passed as `table`. Give it the literal
+`"QuackMPP.exchange"` and `table.type` is that literal type, so `TM[table.type]`
+reduces through the match type to `("meta.quack.bucket", Exact) | "*"`. The
+argument list is checked against a type computed from an earlier argument's value.
+
+Two consequences worth internalising before extending this:
+
+  * **The chain is value → singleton type → match type → expected type.** It only
+    works for literals. Pass a `val t: String = "QuackMPP.exchange"` without a
+    singleton ascription and `table.type` widens to `String`, the match type gets
+    stuck, and you get a confusing error rather than a useful one.
+  * **`params` depends on `action`, not on `table`.** `TP[action.type]` is why an
+    action's parameter list is checked against the action rather than the table —
+    the same dependent-typing trick applied a second time, one argument later.
+
+Scala 3 also offers [dependent *function* types](https://docs.scala-lang.org/scala3/book/types-dependent-function.html)
+— the first-class `(k: Key) => Option[k.Value]` value form. They are a
+generalisation of the dependent *method* types used here, letting such a signature
+be a lambda stored in a `Map` or passed around. P4R-Type does not need that today:
+entries are constructed at call sites, not built by combinators. Reach for them
+only if a controller ever needs to abstract *over* tables — e.g. a generic
+reconciler parameterised by table name — which is the case the method form cannot
+express.
+
+### The limits of the encoding
+
+The generated types capture the *relational* structure of a p4info — which fields
+belong to which table, which actions a table permits, which parameters an action
+takes. They capture none of its *numeric* structure. `typegen` reads `matchType`
+and never reads `bitwidth`, although the p4info carries it:
+
+    "bitwidth": 16,  "matchType": "EXACT"   # meta.quack.bucket
+    "bitwidth": 32                          # worker_id
+    "bitwidth": 9                           # port
+
+So `Exact(bytes(0, 0, 7))` on a `bit<16>` field type-checks and is only rejected
+at the switch, and nothing stops a controller passing 600 to a `bit<9>` port. For
+QuackMPP that is the one that matters: a bucket id overflowing `bit<16>` is a
+silent misroute, not a crash. `priority: Int` is likewise unconstrained even
+though the spec fixes it to 0 for exact-only tables. Both are listed as gaps in §7.
+
+There is a real cost to encoding more, and it is already visible. Renaming a match
+field reports *"match type could not be fully reduced"* rather than naming the
+field — the error surfaces downstream on `ActionParams`, not at the mistake. That
+is why `QuackMppTypegenSuite` asserts only *that* compilation fails and never
+matches on error text. Every additional fact pushed into match types makes those
+messages worse, so weigh diagnostics against coverage rather than encoding
+whatever the p4info happens to contain.
+
+For where this sits relative to Π4, SafeP4 and the rest of the literature, see the
+[README](README.md#related-work-and-what-else-the-types-could-check).
+
 ### Exact vs. non-exact matches
 
 A wrinkle worth knowing before writing a controller: exact fields are mandatory in
@@ -295,11 +360,12 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
    `Bmv2PipelineSuite` (`container/p4rt.sh pipeline-test`), which pushes a
    pipeline, inserts a `bucket` entry and reads it back.
 
-   But note the gap it exposed: **P4R-Type does not canonicalise binary strings**,
-   so `write` then `read` does not round-trip a value — you write `bytes(0, 7)`
-   and get `bytes(7)` back. That breaks the read-write symmetry P4Runtime asks
-   for, and a controller diffing read-back state against intent will see spurious
-   mismatches. [UPGRADE.md](UPGRADE.md) §8.12.
+   ~~But note the gap it exposed: **P4R-Type does not canonicalise binary
+   strings**, so `write` then `read` does not round-trip a value.~~ Also closed —
+   `p4rtype.canonical` strips leading zero bytes on the way out, in both halves of
+   the write path (`matchFieldToProto`, and the action params emitted by
+   `typegen`). Read-write symmetry now holds against a live bmv2.
+   [UPGRADE.md](UPGRADE.md) §8.12.
 2. **No multicast or clone-session modelling.** `Replica`, `MulticastGroupEntry`
    and `CloneSessionEntry` exist in the generated bindings but not in the
    `p4rtype` API. An MPP fabric replicating across workers builds on
@@ -310,3 +376,22 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
 4. **`typegen` output is per-p4info and belongs to the consumer.** It writes Scala
    source; the consumer compiles it into its own module. P4R-Type ships the
    mechanism, not anyone's types.
+5. **Bitwidths are not typed.** `typegen` discards `bitwidth` (§2, *The limits of
+   the encoding*), so an over-wide value for a field reaches the switch before
+   anything objects. A `bit<9>` port accepts 600 at compile time. Closing this
+   means emitting a width match type and checking the length of literal
+   `bytes(...)` arguments inline.
+6. **`priority` is an unconstrained `Int`.** P4Runtime requires 0 for tables whose
+   fields are all exact, and nonzero where a ternary/range/optional field is
+   present. The p4info knows the match kinds, so this is derivable; today a wrong
+   priority is a runtime rejection.
+7. **Only tables are typed.** `CounterEntry(counter_id: Int, ...)` is a bare
+   integer — no name-based safety, nothing generated from the p4info. The same is
+   true of meters and digests. This is the guarantee the paper establishes for
+   tables, simply not extended to the other entity kinds; an MPP fabric wanting
+   per-bucket counters hits it immediately.
+8. **The read path is cast-based.** `fromProto` in the generated code is a
+   sequence of `asInstanceOf` calls (see `src/test/scala/quackmpp_exchange.scala`).
+   The guarantee is genuinely a *write-path* guarantee — reads are dynamically
+   typed and merely do not crash. Relevant to anyone building state reconciliation
+   on top of `read`.
