@@ -30,7 +30,12 @@ object TypegenDrift {
     // `Test / fork := true` — sbt gives a forked test JVM
     // workingDirectory = baseDirectory. Unforked it would inherit sbt's cwd.
     val fixture = java.io.File(System.getProperty("user.dir"), sourcePath)
-    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath}")
+    // munit's assert, not Predef's: this object is not a suite, so a bare
+    // `assert` would resolve to Predef, throw a raw AssertionError that ignores
+    // the `loc` above (so the failure would not anchor at the calling test), and
+    // be elidable under -Xdisable-assertions. In the suites this was extracted
+    // from, `assert` *was* munit's.
+    munit.Assertions.assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath}")
     val committed = scala.util.Using.resource(scala.io.Source.fromFile(fixture))(_.mkString)
 
     typegen.generate(p4info, packageName) match

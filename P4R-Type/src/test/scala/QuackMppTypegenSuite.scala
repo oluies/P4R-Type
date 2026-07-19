@@ -196,14 +196,20 @@ class QuackMppTypegenSuite extends munit.FunSuite {
       "an absolute path must be returned unchanged, not rebased under the project"
     )
 
-    // Asserted as observable properties, not as `cwd.resolve(arg)` — that
-    // expected value is character-for-character the body of the function, so it
-    // would hold for any `<anything>.resolve(arg)` and for the very mutation
-    // this test exists to catch (Path.of(dir, arg) agrees on relative inputs).
-    // The absolute case above is what discriminates; this pins that relative
-    // arguments, the form the README and CI pass, still land under user.dir.
+    // The absolute case above is the one that discriminates. This second case
+    // documents the relative behaviour — the form the README and CI pass — but
+    // does not add discriminating power, and it is worth being straight about
+    // that: `isAbsolute` + `startsWith(cwd)` + `endsWith(rel)` are jointly
+    // equivalent to `cwd.resolve(rel)` for a relative argument, which is the
+    // function body verbatim. Both forms also hold under the `Path.of(dir, arg)`
+    // mutation, since join and resolve agree when the argument is relative.
+    //
+    // A made-up name, not a real fixture path: this is a pure path-resolution
+    // test, and coupling it to a file on disk would make renaming that fixture
+    // fail here, pointing at `resolveUnderCwd`, which would not be what broke.
+    // TypegenDrift.check already covers the fixtures existing.
     val cwd = java.nio.file.Path.of(System.getProperty("user.dir"))
-    val rel = "src/test/resources/quackmpp_exchange.p4info.json"
+    val rel = "a/b.json"
     val resolved = typegen.resolveUnderCwd(rel)
     assert(resolved.isAbsolute, s"$resolved should be absolute")
     assert(resolved.startsWith(cwd), s"$resolved should sit under $cwd")
@@ -211,7 +217,6 @@ class QuackMppTypegenSuite extends munit.FunSuite {
       resolved.endsWith(java.nio.file.Path.of(rel)),
       s"$resolved should end with the argument as given"
     )
-    assert(resolved.toFile.isFile, s"$resolved should name the real fixture")
   }
 
   test("generate reports malformed p4info JSON as a Left rather than throwing") {

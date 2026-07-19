@@ -93,10 +93,16 @@ control MatchKinds(inout headers hdr,
         hdr.ethernet.dstAddr = dstAddr;
     }
 
-    /* All five P4Runtime match kinds on one table. The order is deliberate:
-     * the EXACT field is last, so the generated tuple mixes bare and Option
-     * arms — exact fields are mandatory in P4Runtime, the rest may be omitted,
-     * and typegen mirrors that. */
+    /* All five P4Runtime match kinds on one table.
+     *
+     * The generated tuple mixes bare and Option arms: exact fields are
+     * mandatory in P4Runtime and the rest may be omitted, so typegen emits
+     * ("name", Exact) bare and everything else as Option[...]. That is decided
+     * by match kind alone, not by position — the mix would be the same in any
+     * order.
+     *
+     * The exact field is placed last only so the fixture does not accidentally
+     * match the single-field shape at its head. */
     table acl {
         key = {
             hdr.ipv4.srcAddr  : ternary;

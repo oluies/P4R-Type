@@ -115,6 +115,45 @@ class MatchKindsSuite extends munit.FunSuite {
     )
   }
 
+  /** The omitted-field path, which the round trip above never reaches.
+    *
+    * Every `Option` arm in `entry` is `Some`, so the generated
+    * `te.match.find(_.fieldId == N).map(...)` is never seen returning `None`,
+    * and `toProto`'s `.toSeq` on an empty `Option` is never exercised. Omitting
+    * a non-exact field is the entire reason for the `Option` wrapper — a
+    * P4Runtime entry may leave ternary, range and optional fields out — and an
+    * arm emitted with `.get` instead of `.map` would pass everything above and
+    * throw only against a switch that legitimately omits one.
+    */
+  test("an entry omitting an optional field round-trips with that field absent") {
+    val chan = matchkinds.Chan(0, null, null)
+    val partial = TableEntry[TableMatchFields, TableAction, ActionParams](
+      "MatchKinds.acl",
+      (
+        Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 0), bytes(0xff.toByte, 0, 0, 0)))),
+        Some(("hdr.ipv4.totalLen", Range(bytes(0, 64), bytes(1, 44)))),
+        None,                                          // protocol: don't care
+        Some(("hdr.ipv4.dstAddr",  LPM(bytes(10, 0, 1, 1), 24))),
+        ("meta.bucket", Exact(bytes(0, 7)))
+      ),
+      "MatchKinds.forward",
+      (("port", bytes(0, 2)), ("dstAddr", bytes(1, 2, 3, 4, 5, 6))),
+      10
+    )
+
+    val proto = chan.toProto(partial)
+    assertEquals(
+      proto.`match`.size, 4,
+      "an omitted field must not reach the wire at all — P4Runtime expresses " +
+      "don't-care by absence, not by a zero mask"
+    )
+    assertEquals(proto.`match`.map(_.fieldId), Seq(1, 2, 4, 5), "field 3 absent")
+
+    val back = chan.fromProto[TableMatchFields, TableAction, ActionParams,
+                              "MatchKinds.acl", "MatchKinds.forward"](proto)
+    assertEquals(back.matches, partial.matches, "the None arm must come back as None")
+  }
+
   test("action params on a multi-field table are canonical too") {
     val chan = matchkinds.Chan(0, null, null)
     val params = chan.toProto(entry).action.get.`type`.action.get.params

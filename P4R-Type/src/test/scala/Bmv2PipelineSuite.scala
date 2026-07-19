@@ -110,8 +110,8 @@ class Bmv2PipelineSuite extends munit.FunSuite {
     // is recomputed from a literal.
     assertEquals(
       found.head.matches, entry.matches,
-      "read-write symmetry at the API level: the entry read back must equal " +
-      "the entry written, not merely encode the same value"
+      "read-write symmetry at the API level: the match fields read back must " +
+      "equal the ones written, not merely encode the same value"
     )
   }
 }
