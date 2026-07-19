@@ -576,9 +576,15 @@ object parseP4info {
       )
       System.exit(1)
     else
+      // resolve, not string concatenation, for the same reason as the output
+      // path below: "<user.dir>/" + "/tmp/x.json" is "<user.dir>//tmp/x.json",
+      // so an absolute input path was silently rebased under the project
+      // directory and reported as a missing file. The output path was fixed
+      // for this; the input path was not, and the fix is the same one.
+      val inPath = java.nio.file.Path.of(System.getProperty("user.dir")).resolve(args(0))
       val source =
-        try Right(fromFile(System.getProperty("user.dir") + "/" + args(0)).mkString)
-        catch case e : Throwable => Left("Failure: could not read " + args(0) + ": " + e.getMessage)
+        try Right(fromFile(inPath.toFile).mkString)
+        catch case e : Throwable => Left("Failure: could not read " + inPath + ": " + e.getMessage)
 
       source.flatMap(generate(_, args(1))) match
         case Left(err)  =>
