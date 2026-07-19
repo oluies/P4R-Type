@@ -109,9 +109,15 @@ def genMatchFieldArgs(mfs : Seq[MatchField]) : Either[String, String] = for {
   matchFieldArgs <- mapM(mfs, genMatchFieldArg)
 } yield {
   if mfs.size == 1 then
-    // A single field is not a 1-tuple; it is the field's own type. Wrapping it
-    // would still compile (parens around one type are a no-op) but would churn
-    // the committed quackmpp fixture for no reason.
+    // A single field is not a 1-tuple; it is the field's own type.
+    //
+    // This keeps the single-EXACT case byte-identical, which is what the
+    // committed quackmpp fixture and its drift test care about. It does change
+    // the text for a single NON-exact field — `(Option[(...)])` loses its
+    // parens — so the generated examples under examples/src/main/scala will
+    // churn whenever they are next regenerated. The types are identical either
+    // way, and nothing checks those files for drift: they are generated output
+    // with no regeneration check at all, unlike the two test fixtures.
     matchFieldArgs.head
   else if mfs.size > 1 then
     "(" + matchFieldArgs.reduce((a1, a2) => a1 + ", " + a2) + ")"
@@ -544,18 +550,6 @@ def genP4Info(p4info : P4Info) : Either[String, String] =
     connect + "\n"
   }
 
-/** Library entry point: p4info JSON in, Scala 3 source out.
-  *
-  * This is the API a build tool should call. `typegen` previously only existed
-  * as a main that printed to stdout, which forced consumers (e.g. QuackMPP's
-  * Mill build) to shell out and redirect. Callers that want the types on disk
-  * can write the returned String wherever they like.
-  *
-  * @param p4infoJson the contents of a p4info file in the JSON form emitted by
-  *                   `p4c --target bmv2 --arch v1model --p4runtime-files`
-  * @param packageName the package to declare in the generated source
-  * @return the generated Scala source, or a description of what went wrong
-  */
 /** Parses p4c's p4info JSON into the ScalaPB `P4Info` message.
   *
   * Uses protobuf-java's JsonFormat (the reference implementation of the protobuf
@@ -574,25 +568,24 @@ private def parseP4infoJson(p4infoJson : String) : Either[String, P4Info] =
     Right(P4Info.parseFrom(builder.build().toByteArray))
   catch case e : Throwable => Left("Failure: could not parse p4info JSON: " + e.getMessage)
 
+/** Library entry point: p4info JSON in, Scala 3 source out.
+  *
+  * This is the API a build tool should call. `typegen` previously only existed
+  * as a main that printed to stdout, which forced consumers (e.g. QuackMPP's
+  * Mill build) to shell out and redirect. Callers that want the types on disk
+  * can write the returned String wherever they like.
+  *
+  * @param p4infoJson the contents of a p4info file in the JSON form emitted by
+  *                   `p4c --target bmv2 --arch v1model --p4runtime-files`
+  * @param packageName the package to declare in the generated source
+  * @return the generated Scala source, or a description of what went wrong
+  */
 def generate(p4infoJson : String, packageName : String) : Either[String, String] =
   for {
     p4info <- parseP4infoJson(p4infoJson)
     output <- genP4Info(p4info)
   } yield "package " + packageName + "\n\n" + output
 
-/** CLI wrapper around [[generate]].
-  *
-  * With two arguments it prints to stdout, as it always has (README documents
-  * that). With an optional third it writes the file itself.
-  *
-  * The file mode exists because "print to stdout and redirect" is not actually
-  * usable: sbt interleaves its own log lines into stdout and colourises them in
-  * CI, so `sbt "runMain ..." > Foo.scala` yields a file with `[info]` lines and
-  * ANSI escapes in it. `--error` does not help — the thin client still prints.
-  * Every attempt to filter that back out has been a bug (see the drift check's
-  * history), so the program writes the bytes instead of asking a shell to
-  * salvage them.
-  */
 /** Resolves a CLI path argument against the working directory.
   *
   * `resolve`, never `Path.of(dir, arg)` or `dir + "/" + arg`: both of those
@@ -609,6 +602,19 @@ def generate(p4infoJson : String, packageName : String) : Either[String, String]
 def resolveUnderCwd(arg : String) : java.nio.file.Path =
   java.nio.file.Path.of(System.getProperty("user.dir")).resolve(arg)
 
+/** CLI wrapper around [[generate]].
+  *
+  * With two arguments it prints to stdout, as it always has (README documents
+  * that). With an optional third it writes the file itself.
+  *
+  * The file mode exists because "print to stdout and redirect" is not actually
+  * usable: sbt interleaves its own log lines into stdout and colourises them in
+  * CI, so `sbt "runMain ..." > Foo.scala` yields a file with `[info]` lines and
+  * ANSI escapes in it. `--error` does not help — the thin client still prints.
+  * Every attempt to filter that back out has been a bug (see the drift check's
+  * history), so the program writes the bytes instead of asking a shell to
+  * salvage them.
+  */
 object parseP4info {
   def main(args : Array[String]) : Unit =
     if args.length < 2 || args.length > 3 then

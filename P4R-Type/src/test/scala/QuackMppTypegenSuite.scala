@@ -34,38 +34,15 @@ class QuackMppTypegenSuite extends munit.FunSuite {
 
   /** Drift check: the committed fixture must be exactly what typegen emits today.
     *
-    * This calls the `generate` library entry point directly. It used to be a
-    * shell pipeline in CI that ran `runMain parseP4info`, sed'd the types out of
-    * sbt's log and diffed them. That went green locally and failed in real CI:
-    * sbt colourises its output there, so `[success]` is actually
-    * `[<ESC>[32msuccess<ESC>[0m]` and the sed that was meant to cut sbt's trailer
-    * never matched — appending the success line and a screen-clear escape to the
-    * compared text. Calling `generate` directly removes the log parsing entirely.
-    *
     * The p4info comes off the test classpath; the expected output is read from
     * the source tree, since sbt excludes *.scala from resources and it has to
     * stay a compiled source (that is what proves the emitted types compile).
+    * See [[TypegenDrift]] for the mechanics and why it is not a shell pipeline.
     */
   test("typegen output matches the committed quackmpp_exchange.scala") {
-    val p4info = scala.io.Source.fromResource("quackmpp_exchange.p4info.json").mkString
-
-    // user.dir is the project base directory because build.sbt sets
-    // `Test / fork := true` — sbt gives a forked test JVM
-    // workingDirectory = baseDirectory. Unforked it would just inherit sbt's cwd.
-    val fixture = java.io.File(
-      System.getProperty("user.dir"), "src/test/scala/quackmpp_exchange.scala"
+    TypegenDrift.check(
+      "quackmpp_exchange.p4info.json", "src/test/scala/quackmpp_exchange.scala", "quackmpp"
     )
-    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath}")
-    val committed = scala.io.Source.fromFile(fixture).mkString
-
-    generate(p4info, "quackmpp") match
-      case Left(err) => fail(s"typegen failed: $err")
-      case Right(out) =>
-        assertEquals(
-          out,
-          committed,
-          "typegen output drifted from src/test/scala/quackmpp_exchange.scala — regenerate it"
-        )
   }
 
   /** Pins a KNOWN LIMITATION of the v1.5.0 proto refresh, so it is a documented
@@ -219,13 +196,22 @@ class QuackMppTypegenSuite extends munit.FunSuite {
       "an absolute path must be returned unchanged, not rebased under the project"
     )
 
+    // Asserted as observable properties, not as `cwd.resolve(arg)` — that
+    // expected value is character-for-character the body of the function, so it
+    // would hold for any `<anything>.resolve(arg)` and for the very mutation
+    // this test exists to catch (Path.of(dir, arg) agrees on relative inputs).
+    // The absolute case above is what discriminates; this pins that relative
+    // arguments, the form the README and CI pass, still land under user.dir.
     val cwd = java.nio.file.Path.of(System.getProperty("user.dir"))
-    assertEquals(
-      typegen.resolveUnderCwd("src/test/resources/quackmpp_exchange.p4info.json"),
-      cwd.resolve("src/test/resources/quackmpp_exchange.p4info.json"),
-      "a relative path must still land under the working directory — this is the " +
-      "form the README and CI pass"
+    val rel = "src/test/resources/quackmpp_exchange.p4info.json"
+    val resolved = typegen.resolveUnderCwd(rel)
+    assert(resolved.isAbsolute, s"$resolved should be absolute")
+    assert(resolved.startsWith(cwd), s"$resolved should sit under $cwd")
+    assert(
+      resolved.endsWith(java.nio.file.Path.of(rel)),
+      s"$resolved should end with the argument as given"
     )
+    assert(resolved.toFile.isFile, s"$resolved should name the real fixture")
   }
 
   test("generate reports malformed p4info JSON as a Left rather than throwing") {

@@ -10,9 +10,12 @@
  *
  * Two further things it pins that quackmpp.p4 cannot:
  *
- *  - A **multi-field key**. typegen folds several match fields into a
- *    left-nested tuple — ((((a, b), c), d), e), not a flat 5-tuple — which is
- *    the shape a controller has to write. Nothing documented or tested that.
+ *  - A **multi-field key**. typegen folds several match fields into a flat
+ *    tuple, (f1, f2, f3, f4, f5), in p4info order — the shape a controller has
+ *    to write. It was NOT flat until this fixture was added: the type was
+ *    emitted left-nested, ((((f1, f2), f3), f4), f5), while toProto
+ *    destructured a flat tuple, so any table with three or more match fields
+ *    died with scala.MatchError. See ARCHITECTURE.md §2.
  *  - A table that **requires a nonzero priority**. P4Runtime fixes priority to
  *    0 for exact-only tables and demands nonzero once a ternary/range/optional
  *    field is present, so this is the other side of the rule quackmpp.p4's
@@ -91,8 +94,9 @@ control MatchKinds(inout headers hdr,
     }
 
     /* All five P4Runtime match kinds on one table. The order is deliberate:
-     * the EXACT field is last, so the generated tuple nests the optional ones
-     * on the left and a controller cannot get the shape right by accident. */
+     * the EXACT field is last, so the generated tuple mixes bare and Option
+     * arms — exact fields are mandatory in P4Runtime, the rest may be omitted,
+     * and typegen mirrors that. */
     table acl {
         key = {
             hdr.ipv4.srcAddr  : ternary;

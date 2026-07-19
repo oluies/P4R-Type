@@ -30,7 +30,12 @@ class MatchKindsSuite extends munit.FunSuite {
   private def entry = TableEntry[TableMatchFields, TableAction, ActionParams](
     "MatchKinds.acl",
     (
-      Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 1), bytes(0xff.toByte)))),
+      // value & mask == value, as P4Runtime requires of a ternary field — a
+      // server rejects anything else with INVALID_ARGUMENT. Nothing here sends
+      // this entry to a switch, but `entry` is the obvious thing to reuse if a
+      // bmv2 test for this table is ever added, and it would then fail for a
+      // reason unrelated to what was being tested.
+      Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 0), bytes(0xff.toByte, 0, 0, 0)))),
       Some(("hdr.ipv4.totalLen", Range(bytes(0, 64), bytes(1, 44)))),
       Some(("hdr.ipv4.protocol", Optional(bytes(6)))),
       Some(("hdr.ipv4.dstAddr",  LPM(bytes(10, 0, 1, 1), 24))),
@@ -45,21 +50,9 @@ class MatchKindsSuite extends munit.FunSuite {
   )
 
   test("the committed matchkinds types are what typegen emits today") {
-    val p4info = scala.io.Source.fromResource("matchkinds.p4info.json").mkString
-    val fixture = java.io.File(
-      System.getProperty("user.dir"), "src/test/scala/matchkinds.scala"
+    TypegenDrift.check(
+      "matchkinds.p4info.json", "src/test/scala/matchkinds.scala", "matchkinds"
     )
-    assert(fixture.isFile, s"fixture not found at ${fixture.getAbsolutePath}")
-    val committed = scala.io.Source.fromFile(fixture).mkString
-
-    typegen.generate(p4info, "matchkinds") match
-      case Left(err)  => fail(s"typegen failed: $err")
-      case Right(out) =>
-        assertEquals(
-          out, committed,
-          "typegen output drifted from src/test/scala/matchkinds.scala — " +
-          "regenerate with container/p4rt.sh gen-types"
-        )
   }
 
   /** The regression test for the n >= 3 MatchError. Before the tuple type was
@@ -82,8 +75,8 @@ class MatchKindsSuite extends munit.FunSuite {
     val fms = chan.toProto(entry).`match`.map(fm => fm.fieldId -> fm.fieldMatchType).toMap
 
     val tern = fms(1).ternary.get
-    assertEquals(tern.value, bytes(10, 0, 0, 1), "interior zeros survive; only leading ones go")
-    assertEquals(tern.mask, bytes(0xff.toByte))
+    assertEquals(tern.value, bytes(10, 0, 0, 0), "interior and trailing zeros survive; only leading ones go")
+    assertEquals(tern.mask, bytes(0xff.toByte, 0, 0, 0))
 
     val rng = fms(2).range.get
     assertEquals(rng.low, bytes(64), "0x00,0x40 canonicalises to 0x40")
@@ -96,6 +89,30 @@ class MatchKindsSuite extends munit.FunSuite {
     assertEquals(lpm.prefixLen, 24, "prefixLen is not a binary string and is untouched")
 
     assertEquals(fms(5).exact.get.value, bytes(7), "0x00,0x07 canonicalises to 0x07")
+  }
+
+  /** The `fromProto` half, which compilation alone does not check.
+    *
+    * Every emitted arm is a pair of same-typed `ByteString` accessors —
+    * `Range(...range.get.low, ...range.get.high)`,
+    * `Ternary(...value, ...mask)` — so swapping the two compiles perfectly and
+    * no other test in the repo would notice. That is exactly the "emits Scala
+    * source, nothing catches a typo" failure mode this fixture exists to close,
+    * and covering only `toProto` would leave it half-closed.
+    *
+    * Comparing `.matches` is sound because the companions canonicalise at
+    * construction; comparing whole entries would not be, since `TableEntry`
+    * equality includes `params`.
+    */
+  test("toProto then fromProto round-trips every match kind") {
+    val chan = matchkinds.Chan(0, null, null)
+    val back = chan.fromProto[TableMatchFields, TableAction, ActionParams,
+                              "MatchKinds.acl", "MatchKinds.forward"](chan.toProto(entry))
+    assertEquals(
+      back.matches, entry.matches,
+      "a match field must survive the round trip into its own arm — a swapped " +
+      "low/high or value/mask would compile and show up only here"
+    )
   }
 
   test("action params on a multi-field table are canonical too") {

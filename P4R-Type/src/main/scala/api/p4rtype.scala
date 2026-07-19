@@ -31,8 +31,11 @@ type Wildcard = "*"
   * strings through [[canonical]], so a value is canonical from the moment it
   * exists. This is what makes `Exact(bytes(0, 7)) == Exact(bytes(7))` and gives
   * P4Runtime read-write symmetry at the *API* level, not just on the wire: a
-  * controller can diff a read-back entry against the entry it intended and get
-  * an answer about the switch rather than about encoding length.
+  * controller can diff read-back '''match fields''' against the ones it intended
+  * and get an answer about the switch rather than about encoding length.
+  *
+  * Match fields, not whole entries — `TableEntry` equality includes `params`,
+  * which are not covered. See [[canonical]].
   *
   * `copy` is private as a consequence, so it cannot be used to reintroduce a
   * non-canonical value. Pattern matching is unaffected — `unapply` stays public.
