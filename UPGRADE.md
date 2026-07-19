@@ -551,9 +551,12 @@ verified free of `quackmpp/` entries.
     assert(intended_value == observed_value)
     ```
 
-    That assertion is now made literally, against a live bmv2:
+    That assertion now holds **for match fields**, against a live bmv2:
     `Bmv2PipelineSuite` asserts `found.head.matches == entry.matches`, not merely
-    that the two encode the same integer. Mutation-tested — dropping
+    that the two encode the same integer. It is deliberately `.matches` and not
+    the whole entry — `TableEntry` equality includes `params`, which are not
+    canonicalised at construction, so entity-level equality as the pseudocode
+    literally states it still does not hold. Mutation-tested — dropping
     canonicalisation from the `Exact` companion fails it, and passes everything
     that only inspects the wire, which is precisely why the wire-level assertion
     it replaced was not evidence for this.

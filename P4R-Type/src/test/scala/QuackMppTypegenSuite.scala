@@ -99,15 +99,12 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     * that writes a longer encoding reads back something different from what it
     * wrote (was UPGRADE.md §8.12).
     *
-    * These check the *write path* rather than what a switch returns, which is
-    * the only place the property is visible: a switch canonicalises regardless,
-    * so a read-back value looks the same either way. That also means they run in
-    * CI with no bmv2.
-    */
-  /** Construction is where canonicalisation happens, so this is the assertion
-    * that can actually fail. `matchFieldToProto` no longer calls `canonical` —
-    * it cannot receive a non-canonical value — so a wire test alone would not
+    * Construction is where that happens, so this is the assertion that can
+    * actually fail. `matchFieldToProto` no longer calls `canonical` — it cannot
+    * receive a non-canonical value — so the wire tests below would not
     * distinguish "the write path canonicalises" from "the value already was".
+    * None of these need a bmv2; the API-level round trip that does is in
+    * `Bmv2PipelineSuite`.
     */
   test("match-field values are canonical at construction") {
     assertEquals(
@@ -117,7 +114,8 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     )
 
     // The equality this buys is the whole point: it is what lets a controller
-    // diff a read-back entry against the entry it intended.
+    // diff read-back *match fields* against the ones it intended. Not whole
+    // entries — TableEntry equality includes params, which are not covered.
     assertEquals(Exact(bytes(0, 7)), Exact(bytes(7)))
     assertEquals(LPM(bytes(0, 10, 0, 1), 24), LPM(bytes(10, 0, 1), 24))
     assertEquals(Ternary(bytes(0, 7), bytes(0, 0xff.toByte)), Ternary(bytes(7), bytes(0xff.toByte)))
@@ -205,6 +203,29 @@ class QuackMppTypegenSuite extends munit.FunSuite {
 
     val opt = p4rtype.matchFieldToProto(1, Optional(bytes(0, 0, 5)))
     assertEquals(opt.fieldMatchType.optional.get.value, bytes(5))
+  }
+
+  /** Pins the join-vs-resolve trap that hit both CLI paths.
+    *
+    * `user.dir + "/" + arg` and `Path.of(user.dir, arg)` both JOIN, so an
+    * absolute argument was silently rebased under the project directory and
+    * then reported as a missing file. That was fixed on the output path and
+    * left on the input path for two commits, because nothing tested either.
+    */
+  test("CLI paths: absolute stays absolute, relative resolves under user.dir") {
+    val abs = java.nio.file.Path.of("/tmp/x.json")
+    assertEquals(
+      typegen.resolveUnderCwd("/tmp/x.json"), abs,
+      "an absolute path must be returned unchanged, not rebased under the project"
+    )
+
+    val cwd = java.nio.file.Path.of(System.getProperty("user.dir"))
+    assertEquals(
+      typegen.resolveUnderCwd("src/test/resources/quackmpp_exchange.p4info.json"),
+      cwd.resolve("src/test/resources/quackmpp_exchange.p4info.json"),
+      "a relative path must still land under the working directory — this is the " +
+      "form the README and CI pass"
+    )
   }
 
   test("generate reports malformed p4info JSON as a Left rather than throwing") {

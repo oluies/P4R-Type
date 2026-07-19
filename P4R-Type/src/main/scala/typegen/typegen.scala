@@ -567,6 +567,22 @@ def generate(p4infoJson : String, packageName : String) : Either[String, String]
   * history), so the program writes the bytes instead of asking a shell to
   * salvage them.
   */
+/** Resolves a CLI path argument against the working directory.
+  *
+  * `resolve`, never `Path.of(dir, arg)` or `dir + "/" + arg`: both of those
+  * JOIN, so an absolute argument is silently rebased under the project
+  * directory — `/tmp/x.json` becomes `<P4R-Type>/tmp/x.json`, which then fails
+  * as a missing file. `resolve` returns an absolute argument unchanged and
+  * leaves a relative one relative to `user.dir`, which is what the README and
+  * CI pass.
+  *
+  * Extracted so both the input and output paths share one implementation and it
+  * can be tested — the defect was fixed on the output path first and left on
+  * the input path for two commits, because nothing pinned either.
+  */
+def resolveUnderCwd(arg : String) : java.nio.file.Path =
+  java.nio.file.Path.of(System.getProperty("user.dir")).resolve(arg)
+
 object parseP4info {
   def main(args : Array[String]) : Unit =
     if args.length < 2 || args.length > 3 then
@@ -576,14 +592,9 @@ object parseP4info {
       )
       System.exit(1)
     else
-      // resolve, not string concatenation, for the same reason as the output
-      // path below: "<user.dir>/" + "/tmp/x.json" is "<user.dir>//tmp/x.json",
-      // so an absolute input path was silently rebased under the project
-      // directory and reported as a missing file. The output path was fixed
-      // for this; the input path was not, and the fix is the same one.
-      val inPath = java.nio.file.Path.of(System.getProperty("user.dir")).resolve(args(0))
+      val inPath = resolveUnderCwd(args(0))
       val source =
-        try Right(fromFile(inPath.toFile).mkString)
+        try Right(scala.util.Using.resource(fromFile(inPath.toFile))(_.mkString))
         catch case e : Throwable => Left("Failure: could not read " + inPath + ": " + e.getMessage)
 
       source.flatMap(generate(_, args(1))) match
@@ -593,11 +604,7 @@ object parseP4info {
         case Right(out) =>
           if args.length == 2 then print(out)
           else
-            // resolve, not Path.of(dir, arg): Path.of JOINS, so an absolute
-            // output path would be silently rebased under the project directory
-            // (/tmp/Foo.scala -> <P4R-Type>/tmp/Foo.scala). resolve returns the
-            // argument unchanged when it is already absolute.
-            val path = java.nio.file.Path.of(System.getProperty("user.dir")).resolve(args(2))
+            val path = resolveUnderCwd(args(2))
             try
               java.nio.file.Files.writeString(path, out)
               System.err.println("wrote " + path)

@@ -380,9 +380,11 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
    `Range` / `Ternary` / `Optional` companions (private constructors, canonicalising
    `apply`). A match-field value is canonical from the moment it exists, so
    `Exact(bytes(0, 7)) == Exact(bytes(7))`, and since `fromProto` rebuilds through
-   the same companions an entry read back from a switch compares equal to the entry
-   written. `Bmv2PipelineSuite` asserts exactly that — `found.head.matches ==
-   entry.matches` — against a live bmv2.
+   the same companions the **match fields** read back from a switch compare equal
+   to the match fields written. `Bmv2PipelineSuite` asserts exactly that —
+   `found.head.matches == entry.matches` — against a live bmv2. Note it is
+   `.matches`, not the whole entry: `TableEntry` equality includes `params`, which
+   are not covered.
 
    Two things remain the caller's problem. **Action params** are bare `ByteString`s
    inside `typegen`-generated tuples with no constructor to intercept; they are

@@ -78,8 +78,11 @@ type MatchFieldType = Exact | LPM | Range | Ternary | Optional
   * [[Range]] / [[Ternary]] / [[Optional]] companions, so match-field values are
   * canonical from the moment they exist and `Exact(bytes(0, 7))` ''is'' an
   * `Exact(bytes(7))`. That is what makes read-write symmetry hold at the API
-  * level: `fromProto` rebuilds through the same companions, so an entry read
-  * back from a switch compares equal to the entry that was written.
+  * level for '''match fields''': `fromProto` rebuilds them through the same
+  * companions, so `read(...).matches == written.matches`.
+  *
+  * Not for a whole `TableEntry`, though — its equality includes `params`, and
+  * those are not covered (below). Compare `.matches`, not the entry.
   *
   * It stays public because '''action parameters cannot be covered this way''' —
   * `typegen` emits them as bare `ByteString`s inside tuples, with no constructor
@@ -94,6 +97,13 @@ type MatchFieldType = Exact | LPM | Range | Ternary | Optional
   * string's byte length is zero, the server always rejects the string". That
   * applies to an empty input too: `bytes()` maps to `bytes(0)`, not back to
   * itself, so this never emits the encoding the spec says is always rejected.
+  *
+  * Note the corner that follows for '''ternary masks''': `Ternary(v, bytes())`
+  * now yields an all-zero mask rather than an empty one. An all-zero ternary
+  * mask means "don't care", which the spec says to express by omitting the
+  * field from the entry entirely, not by sending a zero mask — so do not
+  * construct one. Empty in means zero out, uniformly, values and masks alike;
+  * this function does not validate, it normalises.
   */
 def canonical(v : ByteString) : ByteString =
   val bs = v.toByteArray
@@ -102,19 +112,24 @@ def canonical(v : ByteString) : ByteString =
   while i < bs.length - 1 && bs(i) == 0.toByte do i += 1
   if i == 0 then v else ByteString.copyFrom(bs, i, bs.length - i)
 
-/** Note the absence of `canonical` calls here.
+// Why there are no `canonical` calls below.
+//
+// They used to wrap every field, and became unreachable once the companions
+// above started canonicalising at construction: a `MatchFieldType` is one of
+// five case classes whose constructors are all private, so there is no way to
+// hand this function a non-canonical value.
+//
+// They are removed rather than kept as belt-and-braces, because keeping them
+// would be worse than redundant. If construction canonicalisation regressed, a
+// second pass here would quietly repair the wire — so every test that checks
+// what goes on the wire would still pass while the API-level invariant was
+// broken. One normalisation point, exercised by every wire test, beats two
+// where the outer one can hide a failure of the inner.
+/** Converts a match field to its protobuf form, tagging it with the field id
+  * that `typegen` read from the p4info.
   *
-  * They used to wrap every field, and became unreachable once the companions
-  * above started canonicalising at construction: a `MatchFieldType` is one of
-  * five case classes whose constructors are all private, so there is no way to
-  * hand this function a non-canonical value.
-  *
-  * They are removed rather than kept as belt-and-braces, because keeping them
-  * would be worse than redundant. If construction canonicalisation regressed, a
-  * second pass here would quietly repair the wire — so every test that checks
-  * what goes on the wire would still pass while the API-level invariant was
-  * broken. One normalisation point, exercised by every wire test, beats two
-  * where the outer one can hide a failure of the inner.
+  * @param fieldId the p4info `matchFields[].id` for this field
+  * @param mf the match value; already canonical, by construction
   */
 def matchFieldToProto(fieldId : Int, mf : MatchFieldType) : FieldMatch =
   mf match

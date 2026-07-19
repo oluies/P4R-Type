@@ -555,7 +555,10 @@ Three candidate extensions, highest value first:
      on the way out and the switch never sees it. But `port` is `bit<9>` —
      maximum 511 — and nothing stops a controller passing 600 (`bytes(2, 88)`),
      which canonicalising cannot shrink. Closing this means emitting a width
-     match type and comparing `canonical(...)`'s length against the bitwidth. For
+     match type and comparing `canonical(...)`'s length **and the significant
+     bits of its top byte** against the bitwidth — length alone is not enough,
+     since `bit<9>`'s largest legal value 511 is `bytes(1, 255)` and the illegal
+     600 is `bytes(2, 88)`, both two bytes long. For
      QuackMPP specifically, a bucket id that overflows `bit<16>` is a silent
      misroute rather than a crash, which makes this the one worth doing.
   2. **Priority.** The P4Runtime spec requires priority 0 on exact-only tables and
