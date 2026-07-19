@@ -94,26 +94,24 @@ class Bmv2PipelineSuite extends munit.FunSuite {
     assertEquals(field, "meta.quack.bucket")
     assertEquals(found.head.action, "QuackMPP.set_worker")
 
-    // The switch's canonical form. This is the only thing here the switch can
-    // actually tell us, so it is the only assertion worth making about it.
-    //
-    // Note what is NOT asserted: `found.head.matches == entry.matches`. That is
-    // literally the spec's pseudocode —
+    assertEquals(m.v, bytes(7), "the switch's canonical form")
+
+    // The spec's own pseudocode, asserted directly:
     //     status         = server.write(intended_value, p4_entity)
     //     observed_value = server.read(p4_entity)
     //     assert(intended_value == observed_value)
-    // — and it would FAIL, because `entry` above holds `Exact(bytes(0, 7))`
-    // while the switch returns `Exact(bytes(7))`. p4rtype.canonical runs on the
-    // way out only; it makes the wire conformant, not the caller's intent
-    // object. A controller diffing observed against intended must canonicalise
-    // its own intent first. See ARCHITECTURE.md §7 gap 1.
     //
-    // A `assertEquals(m.v, p4rtype.canonical(bytes(0, 7)))` used to sit here
-    // claiming to check that symmetry. It could not fail independently of the
-    // line below: canonical is a pure function, recomputed from a literal, with
-    // no switch involved — already covered by QuackMppTypegenSuite. In a suite
-    // gated on P4RT_BMV2, an assertion that needs no bmv2 reads as switch
-    // evidence while being none.
-    assertEquals(m.v, bytes(7), "the switch's canonical form")
+    // `entry` was built with Exact(bytes(0, 7)) and the switch returns
+    // bytes(7), so this held only once the Exact/LPM/Range/Ternary/Optional
+    // companions began canonicalising at construction — before that the two
+    // objects compared unequal and a controller diffing observed state against
+    // intent saw a phantom change. This is the assertion that pins it, and
+    // unlike the one it replaced it needs a real switch to answer: nothing here
+    // is recomputed from a literal.
+    assertEquals(
+      found.head.matches, entry.matches,
+      "read-write symmetry at the API level: the entry read back must equal " +
+      "the entry written, not merely encode the same value"
+    )
   }
 }

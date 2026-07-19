@@ -526,11 +526,17 @@ verified free of `quackmpp/` entries.
    reads it back — the round trip nothing could do before. Run it with
    `container/p4rt.sh pipeline-test`.
 
-12. **P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
-    read-write symmetry.** ~~Fixed.~~ **Half fixed** — see the scope note below,
-    which corrects an earlier overclaim here. `p4rtype.canonical` strips leading
-    zero bytes, and `matchFieldToProto` applies it to every match type while
-    `typegen` now emits `p4rtype.canonical(...)` around action parameters.
+12. ~~**P4R-Type does not canonicalise binary strings, so it breaks P4Runtime
+    read-write symmetry.**~~ Fixed, in two steps. `p4rtype.canonical` strips
+    leading zero bytes; `typegen` emits it around action parameters; and the
+    `Exact` / `LPM` / `Range` / `Ternary` / `Optional` companions apply it **at
+    construction**, so a match-field value is canonical from the moment it exists
+    and `Exact(bytes(0, 7)) == Exact(bytes(7))`.
+
+    The middle revision of this entry claimed the fix outright when only the wire
+    was conformant — the caller's own `TableEntry` still held whatever they built,
+    so an intent-vs-observed diff still saw a phantom change. Recorded because the
+    overclaim survived three commits and two documents before review caught it.
 
     The defect, for the record: we wrote `Exact(bytes(0, 7))` for a `bit<16>`
     field and the switch returned `Exact(bytes(7))`. Not bmv2 being lax — a
@@ -545,26 +551,29 @@ verified free of `quackmpp/` entries.
     assert(intended_value == observed_value)
     ```
 
-    **Scope — what this does not fix.** An earlier revision of this entry
-    annotated that `assert` with `# now passes`. It does not, if
-    `intended_value` means the object the caller built. Canonicalisation runs on
-    the way *out* only; `fromProto` returns the switch's bytes verbatim, and the
-    caller's `TableEntry` still holds what they constructed. Write an
-    `Exact(bytes(0, 7))`, read back an `Exact(bytes(7))`, and those are unequal
-    in Scala — which is the symptom this entry originally described, unchanged.
-    What the fix does buy is real but narrower: **the wire is now conformant**,
-    so a switch is no longer being handed a non-canonical encoding, and other
-    P4Runtime clients reading the same entity see what the spec says they should.
-    A controller diffing observed state against intent must run its own intent
-    through `p4rtype.canonical` (public for exactly this reason). Closing it at
-    the API level means canonicalising at construction — in the `Exact` / `LPM` /
-    `Range` / `Ternary` / `Optional` companions — which is a behavioural change
-    to a published type and only covers match fields; action params are bare
-    `ByteString`s inside generated tuples and cannot be intercepted. Left as a
-    decision, recorded as [ARCHITECTURE.md](ARCHITECTURE.md) §7 gap 1.
+    That assertion is now made literally, against a live bmv2:
+    `Bmv2PipelineSuite` asserts `found.head.matches == entry.matches`, not merely
+    that the two encode the same integer. Mutation-tested — dropping
+    canonicalisation from the `Exact` companion fails it, and passes everything
+    that only inspects the wire, which is precisely why the wire-level assertion
+    it replaced was not evidence for this.
 
-    Verified against a real bmv2 — `Bmv2PipelineSuite` asserts the switch returns
-    the canonical form — plus tests that need no switch and pin *both*
+    **Scope.** Two things remain the caller's problem. **Action parameters** are
+    bare `ByteString`s inside `typegen`-generated tuples, with no constructor to
+    intercept: they are canonicalised on the way out, so the wire is right, but a
+    controller diffing *params* against intent must call `p4rtype.canonical`
+    itself (public for that reason). And `copy` on the five match types is now
+    private, a consequence of the private constructors — a source-level break for
+    anyone who used it, which nothing in this repo did.
+
+    Note that `matchFieldToProto` no longer calls `canonical`. It became
+    unreachable with non-canonical input once construction normalised, and
+    keeping it would have been actively harmful: a second pass there would
+    quietly repair the wire if construction regressed, so wire tests would stay
+    green while the API invariant was broken. One normalisation point, exercised
+    by every wire test.
+
+    Also pinned by tests that need no switch, covering *both*
     halves: `Chan.toProto` reads neither socket nor channel, so it can be driven
     with nulls, which covers the match field and the action params (the second
     half lives in typegen's emitted code, not in `matchFieldToProto`, so a test of

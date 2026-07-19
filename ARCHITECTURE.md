@@ -371,27 +371,24 @@ Neither has been upgraded. The VM still works; if it is ever refreshed, note tha
    `Bmv2PipelineSuite` (`container/p4rt.sh pipeline-test`), which pushes a
    pipeline, inserts a `bucket` entry and reads it back.
 
-   But note the gap it exposed: **P4R-Type does not canonicalise binary strings**,
-   so `write` then `read` does not round-trip a value. This is **half closed**, and
-   an earlier revision of this list struck it out entirely — an overclaim, corrected
-   here.
+   ~~But note the gap it exposed: **P4R-Type does not canonicalise binary
+   strings**, so `write` then `read` does not round-trip a value.~~ Also closed,
+   though it took two attempts — the first struck this out when only the *wire*
+   had been made conformant, which left the symptom the gap described untouched.
 
-   `p4rtype.canonical` strips leading zero bytes on the way out, in both halves of
-   the write path (`matchFieldToProto`, and the action params emitted by `typegen`),
-   so **the wire is conformant**. It is not applied on the way in: `fromProto`
-   returns the switch's bytes verbatim, and the caller's `TableEntry` still holds
-   whatever they built. Write an `Exact(bytes(0, 7))`, read back an
-   `Exact(bytes(7))`, and those are unequal in Scala — so a controller diffing
-   observed state against intent still sees a phantom change unless it runs its own
-   intent through `p4rtype.canonical` first (public for exactly that reason).
+   `p4rtype.canonical` is now applied **at construction**, by the `Exact` / `LPM` /
+   `Range` / `Ternary` / `Optional` companions (private constructors, canonicalising
+   `apply`). A match-field value is canonical from the moment it exists, so
+   `Exact(bytes(0, 7)) == Exact(bytes(7))`, and since `fromProto` rebuilds through
+   the same companions an entry read back from a switch compares equal to the entry
+   written. `Bmv2PipelineSuite` asserts exactly that — `found.head.matches ==
+   entry.matches` — against a live bmv2.
 
-   **Open decision.** Closing this at the API level means canonicalising at
-   construction, in the `Exact` / `LPM` / `Range` / `Ternary` / `Optional`
-   companions. That is a behavioural change to published types — `Exact(bytes(0,7))`
-   would then `==` `Exact(bytes(7))`, which is the point — and it only covers match
-   fields: action params are bare `ByteString`s inside generated tuples and cannot
-   be intercepted, so that half needs the caller's cooperation regardless. Worth
-   deciding before QuackMPP builds reconciliation on `read`.
+   Two things remain the caller's problem. **Action params** are bare `ByteString`s
+   inside `typegen`-generated tuples with no constructor to intercept; they are
+   canonicalised on the way out, so the wire is right, but diffing params against
+   intent needs `p4rtype.canonical` explicitly. And **`copy` is now private** on
+   those five types, a consequence of the private constructors.
    [UPGRADE.md](UPGRADE.md) §8.12.
 2. **No multicast or clone-session modelling.** `Replica`, `MulticastGroupEntry`
    and `CloneSessionEntry` exist in the generated bindings but not in the

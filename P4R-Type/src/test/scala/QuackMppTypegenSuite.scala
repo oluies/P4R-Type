@@ -104,13 +104,30 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     * so a read-back value looks the same either way. That also means they run in
     * CI with no bmv2.
     */
-  test("matchFieldToProto canonicalises: leading zero bytes are stripped") {
-    val fm = p4rtype.matchFieldToProto(1, Exact(bytes(0, 7)))
+  /** Construction is where canonicalisation happens, so this is the assertion
+    * that can actually fail. `matchFieldToProto` no longer calls `canonical` —
+    * it cannot receive a non-canonical value — so a wire test alone would not
+    * distinguish "the write path canonicalises" from "the value already was".
+    */
+  test("match-field values are canonical at construction") {
     assertEquals(
-      fm.fieldMatchType.exact.get.value, bytes(7),
-      "bit<16> 7 must go on the wire as the shortest string, bytes(7); the " +
-      "spec's own table marks the 2-byte form as read-write symmetry: no"
+      Exact(bytes(0, 7)).v, bytes(7),
+      "bit<16> 7 must be the shortest string, bytes(7); the spec's own table " +
+      "marks the 2-byte form as read-write symmetry: no"
     )
+
+    // The equality this buys is the whole point: it is what lets a controller
+    // diff a read-back entry against the entry it intended.
+    assertEquals(Exact(bytes(0, 7)), Exact(bytes(7)))
+    assertEquals(LPM(bytes(0, 10, 0, 1), 24), LPM(bytes(10, 0, 1), 24))
+    assertEquals(Ternary(bytes(0, 7), bytes(0, 0xff.toByte)), Ternary(bytes(7), bytes(0xff.toByte)))
+    assertEquals(Range(bytes(0, 1), bytes(0, 9)), Range(bytes(1), bytes(9)))
+    assertEquals(Optional(bytes(0, 0, 5)), Optional(bytes(5)))
+  }
+
+  test("matchFieldToProto puts the canonical value on the wire") {
+    val fm = p4rtype.matchFieldToProto(1, Exact(bytes(0, 7)))
+    assertEquals(fm.fieldMatchType.exact.get.value, bytes(7))
   }
 
   test("canonical leaves an already-canonical value alone") {
@@ -171,7 +188,9 @@ class QuackMppTypegenSuite extends munit.FunSuite {
     )
   }
 
-  test("canonical strips only leading zeros, from every match type") {
+  // Every match type reaches the wire canonical, and nothing but the leading
+  // zeros is disturbed — prefixLen, masks and interior zeros all survive.
+  test("every match type reaches the wire canonical, with nothing else changed") {
     val lpm = p4rtype.matchFieldToProto(1, LPM(bytes(0, 10, 0, 1), 24))
     assertEquals(lpm.fieldMatchType.lpm.get.value, bytes(10, 0, 1))
     assertEquals(lpm.fieldMatchType.lpm.get.prefixLen, 24, "prefixLen is untouched")

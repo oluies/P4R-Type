@@ -25,11 +25,41 @@ import io.grpc.ManagedChannel
 
 type Wildcard = "*"
 
-case class Exact(v : ByteString)
-case class LPM(v : ByteString, pl : Int)
-case class Range(l : ByteString, h : ByteString)
-case class Ternary(v : ByteString, m : ByteString)
-case class Optional(v : ByteString)
+/** The match-field values, canonicalised at construction.
+  *
+  * Each constructor is private and each companion `apply` runs its binary
+  * strings through [[canonical]], so a value is canonical from the moment it
+  * exists. This is what makes `Exact(bytes(0, 7)) == Exact(bytes(7))` and gives
+  * P4Runtime read-write symmetry at the *API* level, not just on the wire: a
+  * controller can diff a read-back entry against the entry it intended and get
+  * an answer about the switch rather than about encoding length.
+  *
+  * `copy` is private as a consequence, so it cannot be used to reintroduce a
+  * non-canonical value. Pattern matching is unaffected — `unapply` stays public.
+  *
+  * Action parameters get no such treatment: `typegen` emits them as bare
+  * `ByteString`s inside tuples, with no type to hang this on, so they are
+  * canonicalised in the generated `toProto` instead. See ARCHITECTURE.md §7.
+  */
+case class Exact private (v : ByteString)
+object Exact:
+  def apply(v : ByteString) : Exact = new Exact(canonical(v))
+
+case class LPM private (v : ByteString, pl : Int)
+object LPM:
+  def apply(v : ByteString, pl : Int) : LPM = new LPM(canonical(v), pl)
+
+case class Range private (l : ByteString, h : ByteString)
+object Range:
+  def apply(l : ByteString, h : ByteString) : Range = new Range(canonical(l), canonical(h))
+
+case class Ternary private (v : ByteString, m : ByteString)
+object Ternary:
+  def apply(v : ByteString, m : ByteString) : Ternary = new Ternary(canonical(v), canonical(m))
+
+case class Optional private (v : ByteString)
+object Optional:
+  def apply(v : ByteString) : Optional = new Optional(canonical(v))
 
 type MatchFieldType = Exact | LPM | Range | Ternary | Optional
 
@@ -44,15 +74,18 @@ type MatchFieldType = Exact | LPM | Range | Ternary | Optional
   * something different from what it wrote. The spec's table of valid
   * encodings marks `bit<16>` 99 as 0x00,0x63 -> symmetry "no"; 0x63 -> "yes".
   *
-  * '''What this does and does not fix.''' It makes the ''wire'' canonical, and
-  * that is all. It is applied on the way out only — in `matchFieldToProto` and in
-  * the action params `typegen` emits — so the caller's own `TableEntry` still
-  * holds whatever they built. Write an `Exact(bytes(0, 7))` and `read` it back
-  * and you still get an `Exact(bytes(7))`, because `fromProto` returns the
-  * switch's bytes verbatim and `Exact(bytes(0, 7)) != Exact(bytes(7))` in Scala.
-  * A controller diffing observed state against intent must therefore run its own
-  * intent through this function first — which is why it is public. See
-  * ARCHITECTURE.md §7 gap 1 for the option of closing that at construction.
+  * '''Where this is applied.''' At construction, by the [[Exact]] / [[LPM]] /
+  * [[Range]] / [[Ternary]] / [[Optional]] companions, so match-field values are
+  * canonical from the moment they exist and `Exact(bytes(0, 7))` ''is'' an
+  * `Exact(bytes(7))`. That is what makes read-write symmetry hold at the API
+  * level: `fromProto` rebuilds through the same companions, so an entry read
+  * back from a switch compares equal to the entry that was written.
+  *
+  * It stays public because '''action parameters cannot be covered this way''' —
+  * `typegen` emits them as bare `ByteString`s inside tuples, with no constructor
+  * to intercept. They are canonicalised in the generated `toProto` on the way
+  * out, so the wire is right, but a controller diffing action params against its
+  * own intent must call this itself.
   *
   * Unsigned only, which is all this is used for: the spec excludes `int<W>` from
   * table key fields and action parameters in P4Runtime v1, so there is no sign
@@ -69,13 +102,27 @@ def canonical(v : ByteString) : ByteString =
   while i < bs.length - 1 && bs(i) == 0.toByte do i += 1
   if i == 0 then v else ByteString.copyFrom(bs, i, bs.length - i)
 
+/** Note the absence of `canonical` calls here.
+  *
+  * They used to wrap every field, and became unreachable once the companions
+  * above started canonicalising at construction: a `MatchFieldType` is one of
+  * five case classes whose constructors are all private, so there is no way to
+  * hand this function a non-canonical value.
+  *
+  * They are removed rather than kept as belt-and-braces, because keeping them
+  * would be worse than redundant. If construction canonicalisation regressed, a
+  * second pass here would quietly repair the wire — so every test that checks
+  * what goes on the wire would still pass while the API-level invariant was
+  * broken. One normalisation point, exercised by every wire test, beats two
+  * where the outer one can hide a failure of the inner.
+  */
 def matchFieldToProto(fieldId : Int, mf : MatchFieldType) : FieldMatch =
   mf match
-    case Exact(v)      => FieldMatch(fieldId, FieldMatchType.Exact(FieldMatch.Exact(value = canonical(v))))
-    case LPM(v, pl)    => FieldMatch(fieldId, FieldMatchType.Lpm(FieldMatch.LPM(value = canonical(v), prefixLen = pl)))
-    case Range(l, h)   => FieldMatch(fieldId, FieldMatchType.Range(FieldMatch.Range(low = canonical(l), high = canonical(h))))
-    case Ternary(v, m) => FieldMatch(fieldId, FieldMatchType.Ternary(FieldMatch.Ternary(value = canonical(v), mask = canonical(m))))
-    case Optional(v)   => FieldMatch(fieldId, FieldMatchType.Optional(FieldMatch.Optional(value = canonical(v))))
+    case Exact(v)      => FieldMatch(fieldId, FieldMatchType.Exact(FieldMatch.Exact(value = v)))
+    case LPM(v, pl)    => FieldMatch(fieldId, FieldMatchType.Lpm(FieldMatch.LPM(value = v, prefixLen = pl)))
+    case Range(l, h)   => FieldMatch(fieldId, FieldMatchType.Range(FieldMatch.Range(low = l, high = h)))
+    case Ternary(v, m) => FieldMatch(fieldId, FieldMatchType.Ternary(FieldMatch.Ternary(value = v, mask = m)))
+    case Optional(v)   => FieldMatch(fieldId, FieldMatchType.Optional(FieldMatch.Optional(value = v)))
 
 case class TableEntry [TM[_], TA[_], TP[_], XN, XA <: TA[XN]] private (table : XN, matches : TM[XN], action : XA, params : TP[XA], priority : Int)
 
