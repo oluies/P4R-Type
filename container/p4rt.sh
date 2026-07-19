@@ -81,19 +81,29 @@ case "${1:-}" in
     ;;
 
   gen)
-    # Writes the fixture directly. There is exactly one committed p4info for
-    # quackmpp.p4 and that is what the tests and CI read; generating a second
-    # copy next to the .p4 only creates something to drift.
+    # Writes the fixtures directly. There is exactly one committed p4info per
+    # .p4 and that is what the tests and CI read; generating a second copy next
+    # to the .p4 only creates something to drift.
+    #
+    # quackmpp.p4    — the spec 003 shape: EXACT on `bucket`, action params.
+    # matchkinds.p4  — TERNARY/RANGE/OPTIONAL/LPM/EXACT on one table. Nothing
+    #                  else in the repo uses the middle three, so without it
+    #                  typegen's emission for them is never exercised.
     run_rm -v "$PROJ:/proj" -w /proj/examples/src/main/p4 "$P4C_IMAGE" \
       sh -c 'p4c --target bmv2 --arch v1model \
                --p4runtime-files /proj/src/test/resources/quackmpp_exchange.p4info.json \
                -o /tmp quackmpp.p4'
     echo "refreshed src/test/resources/quackmpp_exchange.p4info.json"
+    run_rm -v "$PROJ:/proj" -w /proj/examples/src/main/p4 "$P4C_IMAGE" \
+      sh -c 'p4c --target bmv2 --arch v1model \
+               --p4runtime-files /proj/src/test/resources/matchkinds.p4info.json \
+               -o /tmp matchkinds.p4'
+    echo "refreshed src/test/resources/matchkinds.p4info.json"
     echo "now run: $0 gen-types"
     ;;
 
   gen-types)
-    # Regenerates the committed types from the committed fixture. typegen writes
+    # Regenerates the committed types from the committed fixtures. typegen writes
     # the file itself (third arg) rather than printing to stdout — redirecting
     # sbt's stdout puts its log lines and ANSI escapes in the file, and every
     # attempt to filter those out has been a bug.
@@ -101,6 +111,10 @@ case "${1:-}" in
         src/test/resources/quackmpp_exchange.p4info.json quackmpp \
         src/test/scala/quackmpp_exchange.scala" )
     echo "regenerated P4R-Type/src/test/scala/quackmpp_exchange.scala"
+    ( cd "$PROJ" && sbt -batch "runMain typegen.parseP4info \
+        src/test/resources/matchkinds.p4info.json matchkinds \
+        src/test/scala/matchkinds.scala" )
+    echo "regenerated P4R-Type/src/test/scala/matchkinds.scala"
     ;;
 
   gen-vm)

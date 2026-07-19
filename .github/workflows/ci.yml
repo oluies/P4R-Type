@@ -84,18 +84,21 @@ jobs:
         shell: bash
         env:
           IMAGE: p4lang/p4c:latest
-          FIXTURE: P4R-Type/src/test/resources/quackmpp_exchange.p4info.json
-          P4FILE: P4R-Type/examples/src/main/p4/quackmpp.p4
           # Output goes to its own directory, bind-mounted separately, so the
           # build artifact never lands in the checked-out source tree.
           OUTDIR: ${{ runner.temp }}/p4c-out
         run: |
           set -euo pipefail
-          FRESH="$OUTDIR/quackmpp.p4info.json"
           mkdir -p "$OUTDIR"
 
-          test -f "$FIXTURE" || { echo "::error::fixture missing at $(pwd)/$FIXTURE"; exit 1; }
-          test -f "$P4FILE"  || { echo "::error::P4 source missing at $(pwd)/$P4FILE"; exit 1; }
+          # One entry per committed p4info: "<p4 basename> <fixture path>".
+          # quackmpp.p4   — the spec 003 shape (EXACT on `bucket`, action params).
+          # matchkinds.p4 — TERNARY/RANGE/OPTIONAL/LPM/EXACT on one table, the
+          #                 only fixture with more than two match fields.
+          PAIRS=(
+            "quackmpp.p4   P4R-Type/src/test/resources/quackmpp_exchange.p4info.json"
+            "matchkinds.p4 P4R-Type/src/test/resources/matchkinds.p4info.json"
+          )
 
           # Pull separately from the compile. `docker run` exits non-zero for a
           # pull failure or a Docker Hub rate limit just as it does for a p4c
@@ -106,23 +109,33 @@ jobs:
             exit 1
           fi
 
-          if ! docker run --rm \
-                 -v "$PWD/P4R-Type:/proj:ro" -v "$OUTDIR:/out" \
-                 -w /proj/examples/src/main/p4 "$IMAGE" \
-                 sh -c 'p4c --target bmv2 --arch v1model --p4runtime-files /out/quackmpp.p4info.json -o /tmp quackmpp.p4'; then
-            echo "::error::p4c failed to compile $P4FILE — a compile error, not drift."
-            exit 1
-          fi
+          for pair in "${PAIRS[@]}"; do
+            read -r P4NAME FIXTURE <<< "$pair"
+            P4FILE="P4R-Type/examples/src/main/p4/$P4NAME"
+            FRESH="$OUTDIR/${P4NAME%.p4}.p4info.json"
 
-          # p4c exiting 0 without writing the file would otherwise reach `diff`,
-          # which reports "No such file or directory" — and the branch below
-          # would call that drift.
-          test -f "$FRESH" || { echo "::error::p4c exited 0 but wrote no p4info to $FRESH"; exit 1; }
+            test -f "$FIXTURE" || { echo "::error::fixture missing at $(pwd)/$FIXTURE"; exit 1; }
+            test -f "$P4FILE"  || { echo "::error::P4 source missing at $(pwd)/$P4FILE"; exit 1; }
 
-          if ! diff -u "$FIXTURE" "$FRESH"; then
-            echo "::error::p4c's p4info no longer matches the committed fixture (diff above)."
-            echo "::error::Run 'container/p4rt.sh gen' then 'container/p4rt.sh gen-types',"
-            echo "::error::which refresh the fixture and the generated types, and re-run the tests."
-            exit 1
-          fi
-          echo "p4info fixture matches $(docker run --rm "$IMAGE" p4c --version | head -1)"
+            if ! docker run --rm \
+                   -v "$PWD/P4R-Type:/proj:ro" -v "$OUTDIR:/out" \
+                   -w /proj/examples/src/main/p4 "$IMAGE" \
+                   sh -c "p4c --target bmv2 --arch v1model --p4runtime-files /out/$(basename "$FRESH") -o /tmp $P4NAME"; then
+              echo "::error::p4c failed to compile $P4FILE — a compile error, not drift."
+              exit 1
+            fi
+
+            # p4c exiting 0 without writing the file would otherwise reach `diff`,
+            # which reports "No such file or directory" — and the branch below
+            # would call that drift.
+            test -f "$FRESH" || { echo "::error::p4c exited 0 but wrote no p4info to $FRESH"; exit 1; }
+
+            if ! diff -u "$FIXTURE" "$FRESH"; then
+              echo "::error::p4c's p4info for $P4NAME no longer matches $FIXTURE (diff above)."
+              echo "::error::Run 'container/p4rt.sh gen' then 'container/p4rt.sh gen-types',"
+              echo "::error::which refresh the fixtures and the generated types, and re-run the tests."
+              exit 1
+            fi
+            echo "  $P4NAME -> $FIXTURE OK"
+          done
+          echo "p4info fixtures match $(docker run --rm "$IMAGE" p4c --version | head -1)"

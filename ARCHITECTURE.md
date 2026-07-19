@@ -159,6 +159,32 @@ whatever the p4info happens to contain.
 For where this sits relative to Π4, SafeP4 and the rest of the literature, see the
 [README](README.md#related-work-and-what-else-the-types-could-check).
 
+### Multi-field keys, and the shape they take
+
+A table's match fields become a **flat tuple**, in p4info order:
+
+```scala
+type TableMatchFields[TN] =
+  TN match
+    case "MatchKinds.acl" => (Option[("hdr.ipv4.srcAddr", Ternary)],
+                              Option[("hdr.ipv4.totalLen", Range)],
+                              Option[("hdr.ipv4.protocol", Optional)],
+                              Option[("hdr.ipv4.dstAddr", LPM)],
+                              ("meta.bucket", Exact)) | "*"
+```
+
+A single-field table is not a 1-tuple — it is just the field, which is why
+`quackmpp.p4`'s exchange table takes `("meta.quack.bucket", Exact(...))` with no
+extra nesting.
+
+This was wrong until `matchkinds.p4` was added. The *type* was emitted by a
+left-associative reduce, producing a nest of pairs `((((f1, f2), f3), f4), f5)`,
+while `toProto` destructured a flat tuple and `fromProto` built one — so any
+table with **three or more match fields** failed with `scala.MatchError` inside
+`toProto`. It survived because no committed p4info had such a table, and at two
+fields the two shapes coincide: `((A), (B))` *is* `(A, B)`, parentheses around a
+single type not being a tuple. See §4.
+
 ### Exact vs. non-exact matches
 
 A wrinkle worth knowing before writing a controller: exact fields are mandatory in
@@ -218,17 +244,30 @@ Most of the suite is compile-and-typecheck. Two suites touch a real switch.
 ```mermaid
 graph TD
   t1["QuackMppTypegenSuite<br/>typegen output + compile-error guarantee"]
-  t2["p4info-fixture CI job<br/>real p4c vs committed fixture"]
+  t6["MatchKindsSuite<br/>ternary/range/optional + 5-field table"]
+  t2["p4info-fixture CI job<br/>real p4c vs committed fixtures"]
   t3["Bmv2WireSuite<br/>gRPC against real bmv2"]
   t4["examples/compile<br/>examples still build"]
   t5["Bmv2PipelineSuite<br/>push pipeline + insert/read a table entry"]
 
   t1 -->|"no container"| fast["Runs in testFull<br/>always"]
+  t6 --> fast
   t4 --> fast
   t2 -->|"p4lang/p4c container"| ci["CI job"]
   t3 -->|"needs P4RT_BMV2"| opt["Skipped unless<br/>the env vars are set"]
   t5 -->|"needs P4RT_BMV2<br/>+ P4RT_BMV2_JSON"| opt
 ```
+
+`MatchKindsSuite` exists because every fixture before it used only EXACT and LPM,
+on tables of at most two fields. That left `typegen`'s TERNARY / RANGE / OPTIONAL
+emission never once executed — in generation *or* compilation — and hid the
+multi-field bug described in §2. Its fixture, `matchkinds.p4`, is a test artifact
+rather than a dataplane: five match kinds on one table, which also makes it the
+only table in the repo that *requires* a nonzero priority.
+
+Adding it found the bug immediately, which is the argument for fixtures that
+cover emission paths rather than realistic programs: the paths nothing exercises
+are exactly the ones that rot.
 
 `Bmv2WireSuite` is what turns [UPGRADE.md](UPGRADE.md) §5 from an argument into a
 measurement — bmv2 answers `p4runtime_api_version = 1.3.0`, confirming the switch

@@ -72,23 +72,49 @@ def genImports() : Either[String, String] = Right(
 )
 
 // === Match types ===
+//
+// Every branch returns a SELF-CONTAINED type: the EXACT pair carries its own
+// parentheses rather than relying on the caller to add them. It used not to,
+// which worked only because the old tuple builder wrapped each element as it
+// nested; the moment that builder was flattened, `"name", Exact` merged into
+// the surrounding tuple and a five-field table became a six-element one.
 def genMatchFieldArg(mf : MatchField) : Either[String, String] =
   mf.`match`.matchType match
     case None => Left("Failure: Match field has no type.")
     case Some(tp) =>
       tp match
-        case EXACT    => Right("\"" + mf.name + "\", Exact")
+        case EXACT    => Right("(\"" + mf.name + "\", Exact)")
         case LPM      => Right("Option[(\"" + mf.name + "\", LPM)]")
         case RANGE    => Right("Option[(\"" + mf.name + "\", Range)]")
         case TERNARY  => Right("Option[(\"" + mf.name + "\", Ternary)]")
         case OPTIONAL => Right("Option[(\"" + mf.name + "\", Optional)]")
         case _ => Left("Failure: Invalid match field type")
 
+/** Builds the match-field tuple type for a table: `(f1, f2, ..., fn)`.
+  *
+  * Flat, deliberately. This used to reduce with `"(" + a1 + "), (" + a2 + ")"`,
+  * which is left-associative and so produced `((((f1, f2), f3), f4), f5)` — a
+  * nest of pairs. Both places that consume this type build a *flat* tuple: the
+  * `toProto` pattern (`case (table, (t0, t1, t2, t3, ...))`) and the `fromProto`
+  * constructor. So for three or more match fields the generated code declared
+  * one shape and destructured another, and any entry for such a table died with
+  * a `scala.MatchError` inside `toProto`.
+  *
+  * It went unnoticed because no committed p4info had a table with more than two
+  * match fields, and at n <= 2 the two forms coincide — `((A), (B))` is `(A, B)`,
+  * since parentheses around a single type are not a tuple. `matchkinds.p4`
+  * exists to hold the n = 5 case.
+  */
 def genMatchFieldArgs(mfs : Seq[MatchField]) : Either[String, String] = for {
   matchFieldArgs <- mapM(mfs, genMatchFieldArg)
 } yield {
-  if mfs.size > 0 then
-    "(" + matchFieldArgs.reduce((a1, a2) => "(" + a1 + "), (" + a2 + ")") + ")"
+  if mfs.size == 1 then
+    // A single field is not a 1-tuple; it is the field's own type. Wrapping it
+    // would still compile (parens around one type are a no-op) but would churn
+    // the committed quackmpp fixture for no reason.
+    matchFieldArgs.head
+  else if mfs.size > 1 then
+    "(" + matchFieldArgs.reduce((a1, a2) => a1 + ", " + a2) + ")"
   else
     "Unit"
 }

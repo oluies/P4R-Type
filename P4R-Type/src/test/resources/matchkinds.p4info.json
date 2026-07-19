@@ -1,0 +1,100 @@
+{
+ "pkgInfo": {
+  "arch": "v1model"
+ },
+ "tables": [
+  {
+   "preamble": {
+    "id": 48546767,
+    "name": "MatchKinds.acl",
+    "alias": "acl"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "hdr.ipv4.srcAddr",
+     "bitwidth": 32,
+     "matchType": "TERNARY"
+    },
+    {
+     "id": 2,
+     "name": "hdr.ipv4.totalLen",
+     "bitwidth": 16,
+     "matchType": "RANGE"
+    },
+    {
+     "id": 3,
+     "name": "hdr.ipv4.protocol",
+     "bitwidth": 8,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 4,
+     "name": "hdr.ipv4.dstAddr",
+     "bitwidth": 32,
+     "matchType": "LPM"
+    },
+    {
+     "id": 5,
+     "name": "meta.bucket",
+     "bitwidth": 16,
+     "matchType": "EXACT"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 32757467
+    },
+    {
+     "id": 25296330
+    },
+    {
+     "id": 21257015
+    }
+   ],
+   "initialDefaultAction": {
+    "actionId": 21257015
+   },
+   "size": "1024"
+  }
+ ],
+ "actions": [
+  {
+   "preamble": {
+    "id": 21257015,
+    "name": "NoAction",
+    "alias": "NoAction",
+    "annotations": [
+     "@noWarn(\"unused\")"
+    ]
+   }
+  },
+  {
+   "preamble": {
+    "id": 25296330,
+    "name": "MatchKinds.drop",
+    "alias": "drop"
+   }
+  },
+  {
+   "preamble": {
+    "id": 32757467,
+    "name": "MatchKinds.forward",
+    "alias": "forward"
+   },
+   "params": [
+    {
+     "id": 1,
+     "name": "port",
+     "bitwidth": 9
+    },
+    {
+     "id": 2,
+     "name": "dstAddr",
+     "bitwidth": 48
+    }
+   ]
+  }
+ ],
+ "typeInfo": {}
+}
