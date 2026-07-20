@@ -15,9 +15,19 @@ jobs:
     name: Build (JDK ${{ matrix.java }})
     runs-on: ubuntu-latest
     strategy:
+      # Both JDKs report, rather than the first failure cancelling the other.
+      # A break on one and not the other is the whole signal here.
       fail-fast: false
       matrix:
-        java: ['25']
+        # 25 is the LTS baseline QuackMPP specified; 26 is current. Scala Steward
+        # proposes library and Scala upgrades but never JDK ones, so this axis is
+        # the only thing that notices a new JDK breaking the build.
+        #
+        # There is no Scala axis: scalaVersion is a single val, and this project
+        # tracks Scala Next, so the pin *is* the latest (3.8.4 today). When 3.9
+        # lands, Steward offers it as a CI-gated PR — a reviewable change rather
+        # than a permanently-red canary job.
+        java: ['25', '26']
 
     defaults:
       run:
