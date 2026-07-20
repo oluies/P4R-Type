@@ -1,5 +1,7 @@
 # P4R-Type artifact instructions
 
+[![CI](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml/badge.svg)](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml)
+
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
 > **Scala 3.8.4 / sbt 2.0.3 / JDK 25 (LTS baseline) or 26 — CI builds both**,
@@ -29,6 +31,76 @@ This repository contains:
     replacement for `vm/`** (no mininet, no topology, different p4c/bmv2 versions);
     see [ARCHITECTURE.md](ARCHITECTURE.md) §6 for the comparison.
 
+## Building and testing
+
+Nothing here needs the VM or a container. From `P4R-Type/`:
+
+    sbt "compile; Test/compile; testFull; examples/compile"
+
+That is exactly what CI runs. Note `testFull`, not `test` — see the warning
+above; and `examples/compile` is separate because `root` deliberately does not
+aggregate `examples`.
+
+The bmv2-backed suites skip themselves unless their environment variables are
+set, and **say so** rather than passing silently:
+
+    [info] Bmv2WireSuite skipped: set P4RT_BMV2=host:port to run it
+    [info] Bmv2PipelineSuite skipped: set P4RT_BMV2=host:port and P4RT_BMV2_JSON=...
+
+### Running bmv2 and p4c in a container
+
+`container/p4rt.sh` works with **either Docker or Apple's `container`**. It
+picks whichever is on `PATH`, preferring `container`; override with
+`RUNTIME=docker` or `RUNTIME=container`. Run from the repo root:
+
+| Command | What it does |
+|---|---|
+| `container/p4rt.sh up` | start `simple_switch_grpc` on `localhost:9559`, waiting until it actually answers |
+| `container/p4rt.sh down` | stop it |
+| `container/p4rt.sh test` | `up`, then run `Bmv2WireSuite` against it |
+| `container/p4rt.sh pipeline-test` | `up`, push a pipeline, insert and read back a table entry |
+| `container/p4rt.sh gen` | recompile the `.p4` files and refresh the committed p4info fixtures |
+| `container/p4rt.sh gen-types` | regenerate the committed Scala types from those fixtures |
+| `container/p4rt.sh gen-vm` | same as `gen`, using the older p4c the mininet VM ships |
+
+There is also `container/compose.yaml`, but it is **Docker only** — Apple's
+`container` has no compose support (`container compose` reports
+`Plugin 'container-compose' not found`), which is why the script exists.
+
+Two things worth knowing on an Apple-silicon Mac:
+
+  * p4lang publishes `linux/amd64` images only, so everything runs emulated. The
+    script passes `--platform linux/amd64` explicitly; the first p4c run took
+    about 3m36s on an M-series machine.
+  * Apple's daemon is not started automatically and does not survive a reboot.
+    The script runs `container system start` for you — without it every
+    subcommand fails with an opaque XPC error that reads like a broken install.
+
+After `gen`/`gen-types`, re-run the test suite: the drift tests compare the
+committed types against what `typegen` emits, and CI compares the committed
+p4info against fresh `p4c` output.
+
+### What CI checks
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), on every push and pull
+request:
+
+  * **Build (JDK 25)** and **Build (JDK 26)** — the full command above, on both
+    the LTS baseline and the current JDK. `fail-fast: false`, so a break on one
+    and not the other is visible rather than cancelled.
+  * **p4info fixture matches real p4c** — recompiles every committed `.p4` with
+    `p4lang/p4c` and diffs the result against the committed fixture, so a newer
+    p4c emitting a field we do not model is caught rather than discovered later.
+
+All three are required status checks on `main`, which also rejects force-pushes
+and deletion. Administrators are exempt, so direct pushes still work — CI is
+blocking for everyone else, advisory for repo admins.
+
+Dependency updates arrive as CI-gated PRs from
+[Scala Steward](.github/workflows/scala-steward.yml); GitHub Actions versions
+come from Dependabot, since Steward does not cover them. Neither proposes JDK
+upgrades, which is why the JDK matrix above is maintained by hand.
+
 **Note for OOPSLA artifact version:** As an alternative to building the VM image with Vagrant, the top folder also contains the file `P4R-Type_Demo_VM.ova`, a ready-to-use VM image. It can be imported with the VirtualBox interface using the default settings. In case you use this method for setting up the VM, skip the first three steps of the **Kick-the-Tires Guide** and start the VM directly from VirtualBox instead.
 
 The OOPSLA artifact version which includes the VM image can be found [here](https://dl.acm.org/do/10.1145/3580420).
@@ -40,6 +112,11 @@ __This artifact requires:__
   * [sbt](https://www.scala-sbt.org/) (for building the P4R-Type API and type generator)
   * [VirtualBox](https://www.virtualbox.org/wiki/Downloads) (for running the examples)
   * [Vagrant](https://www.vagrantup.com/) (for running the examples)
+
+VirtualBox and Vagrant are needed only for the paper's examples, which use the
+mininet network in `vm/`. To build, run the test suite, or exercise the
+P4Runtime wire against a real bmv2, you need only sbt and a container runtime —
+Docker or Apple's `container`. See [Building and testing](#building-and-testing).
 
 ## Kick-the-Tires Guide
 
