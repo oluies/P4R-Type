@@ -24,7 +24,7 @@ So the upgrade was not optional — there was no working baseline to regress aga
 | --- | --- | --- |
 | sbt | 1.7.1 | **2.0.3** |
 | Scala | 3.1.3 | **3.8.4** (Next track) |
-| JDK | unpinned (broken on 25/26) | **25 LTS** (CI-pinned) |
+| JDK | unpinned (broken on 25/26) | **25 LTS or 26** (CI builds both) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
 | ScalaPB compilerplugin | 0.11.11 | **1.0.0-alpha.6** |
 | scalapb-runtime / -grpc | 0.11.11 | **1.0.0-alpha.6** |

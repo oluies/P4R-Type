@@ -27,27 +27,39 @@ class MatchKindsSuite extends munit.FunSuite {
   // Bit widths from the p4info, for reference when reading the values below:
   //   srcAddr bit<32>, totalLen bit<16>, protocol bit<8>, dstAddr bit<32>,
   //   bucket bit<16>, and forward(port bit<9>, dstAddr bit<48>).
-  private def entry = TableEntry[TableMatchFields, TableAction, ActionParams](
-    "MatchKinds.acl",
-    (
-      // value & mask == value, as P4Runtime requires of a ternary field — a
-      // server rejects anything else with INVALID_ARGUMENT. Nothing here sends
-      // this entry to a switch, but `entry` is the obvious thing to reuse if a
-      // bmv2 test for this table is ever added, and it would then fail for a
-      // reason unrelated to what was being tested.
-      Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 0), bytes(0xff.toByte, 0, 0, 0)))),
-      Some(("hdr.ipv4.totalLen", Range(bytes(0, 64), bytes(1, 44)))),
-      Some(("hdr.ipv4.protocol", Optional(bytes(6)))),
-      Some(("hdr.ipv4.dstAddr",  LPM(bytes(10, 0, 1, 1), 24))),
-      ("meta.bucket", Exact(bytes(0, 7)))
-    ),
-    "MatchKinds.forward",
-    (("port", bytes(0, 2)), ("dstAddr", bytes(1, 2, 3, 4, 5, 6))),
-    // Nonzero, and required to be: P4Runtime fixes priority to 0 only for
-    // tables whose fields are all exact. This is the other side of the rule
-    // quackmpp.p4's exchange table exercises (ARCHITECTURE.md §7 gap 6).
-    10
-  )
+  /** One builder, varying only the arm the omitted-field test is about.
+    *
+    * `TableEntry`'s constructor is private, so `copy` is inaccessible and a
+    * second entry cannot be derived from the first. Written out twice, the two
+    * would drift silently: change a bit width, a field name or the ternary
+    * invariant in one and the other keeps passing while testing something else.
+    * Parameterising also puts the single-arm difference at the call site, which
+    * is the point of the test.
+    */
+  private def entryWith(protocol : Option[("hdr.ipv4.protocol", Optional)]) =
+    TableEntry[TableMatchFields, TableAction, ActionParams](
+      "MatchKinds.acl",
+      (
+        // value & mask == value, as P4Runtime requires of a ternary field — a
+        // server rejects anything else with INVALID_ARGUMENT. Nothing here sends
+        // this entry to a switch, but it is the obvious thing to reuse if a bmv2
+        // test for this table is ever added, and it would then fail for a reason
+        // unrelated to what was being tested.
+        Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 0), bytes(0xff.toByte, 0, 0, 0)))),
+        Some(("hdr.ipv4.totalLen", Range(bytes(0, 64), bytes(1, 44)))),
+        protocol,
+        Some(("hdr.ipv4.dstAddr",  LPM(bytes(10, 0, 1, 1), 24))),
+        ("meta.bucket", Exact(bytes(0, 7)))
+      ),
+      "MatchKinds.forward",
+      (("port", bytes(0, 2)), ("dstAddr", bytes(1, 2, 3, 4, 5, 6))),
+      // Nonzero, and required to be: P4Runtime fixes priority to 0 only for
+      // tables whose fields are all exact. This is the other side of the rule
+      // quackmpp.p4's exchange table exercises (ARCHITECTURE.md §7 gap 6).
+      10
+    )
+
+  private def entry = entryWith(Some(("hdr.ipv4.protocol", Optional(bytes(6)))))
 
   test("the committed matchkinds types are what typegen emits today") {
     TypegenDrift.check(
@@ -127,27 +139,14 @@ class MatchKindsSuite extends munit.FunSuite {
     */
   test("an entry omitting an optional field round-trips with that field absent") {
     val chan = matchkinds.Chan(0, null, null)
-    val partial = TableEntry[TableMatchFields, TableAction, ActionParams](
-      "MatchKinds.acl",
-      (
-        Some(("hdr.ipv4.srcAddr",  Ternary(bytes(10, 0, 0, 0), bytes(0xff.toByte, 0, 0, 0)))),
-        Some(("hdr.ipv4.totalLen", Range(bytes(0, 64), bytes(1, 44)))),
-        None,                                          // protocol: don't care
-        Some(("hdr.ipv4.dstAddr",  LPM(bytes(10, 0, 1, 1), 24))),
-        ("meta.bucket", Exact(bytes(0, 7)))
-      ),
-      "MatchKinds.forward",
-      (("port", bytes(0, 2)), ("dstAddr", bytes(1, 2, 3, 4, 5, 6))),
-      10
-    )
+    val partial = entryWith(None)               // protocol: don't care
 
     val proto = chan.toProto(partial)
     assertEquals(
-      proto.`match`.size, 4,
-      "an omitted field must not reach the wire at all — P4Runtime expresses " +
-      "don't-care by absence, not by a zero mask"
+      proto.`match`.map(_.fieldId), Seq(1, 2, 4, 5),
+      "field 3 must be absent from the wire entirely — P4Runtime expresses " +
+      "don't-care by omitting the field, not by sending a zero mask"
     )
-    assertEquals(proto.`match`.map(_.fieldId), Seq(1, 2, 4, 5), "field 3 absent")
 
     val back = chan.fromProto[TableMatchFields, TableAction, ActionParams,
                               "MatchKinds.acl", "MatchKinds.forward"](proto)

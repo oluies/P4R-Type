@@ -99,10 +99,8 @@ control MatchKinds(inout headers hdr,
      * mandatory in P4Runtime and the rest may be omitted, so typegen emits
      * ("name", Exact) bare and everything else as Option[...]. That is decided
      * by match kind alone, not by position — the mix would be the same in any
-     * order.
-     *
-     * The exact field is placed last only so the fixture does not accidentally
-     * match the single-field shape at its head. */
+     * order, and the ordering here is arbitrary. What the fixture is for (five
+     * kinds, and n >= 3 fields) does not depend on it. */
     table acl {
         key = {
             hdr.ipv4.srcAddr  : ternary;

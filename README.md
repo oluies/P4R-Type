@@ -2,7 +2,8 @@
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
-> **Scala 3.8.4 / sbt 2.0.3 / JDK 25**, to serve as the control-plane binding
+> **Scala 3.8.4 / sbt 2.0.3 / JDK 25 (LTS baseline) or 26 — CI builds both**,
+> to serve as the control-plane binding
 > library for QuackMPP.
 >
 > * **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the pieces fit (diagrams), how to
