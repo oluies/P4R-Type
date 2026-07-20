@@ -37,15 +37,15 @@ Nothing here needs the VM or a container. From `P4R-Type/`:
 
     sbt "compile; Test/compile; testFull; examples/compile"
 
-That is exactly what CI runs. Note `testFull`, not `test` — see the warning
-above; and `examples/compile` is separate because `root` deliberately does not
-aggregate `examples`.
+These are the same commands CI runs (CI adds `-batch`). Note `testFull`, not
+`test` — see the warning above; and `examples/compile` is separate because
+`root` deliberately does not aggregate `examples`.
 
 The bmv2-backed suites skip themselves unless their environment variables are
 set, and **say so** rather than passing silently:
 
     [info] Bmv2WireSuite skipped: set P4RT_BMV2=host:port to run it
-    [info] Bmv2PipelineSuite skipped: set P4RT_BMV2=host:port and P4RT_BMV2_JSON=...
+    [info] Bmv2PipelineSuite skipped: set P4RT_BMV2=host:port and P4RT_BMV2_JSON=/path/to/quackmpp.json
 
 ### Running bmv2 and p4c in a container
 
@@ -61,7 +61,7 @@ picks whichever is on `PATH`, preferring `container`; override with
 | `container/p4rt.sh pipeline-test` | `up`, push a pipeline, insert and read back a table entry |
 | `container/p4rt.sh gen` | recompile the `.p4` files and refresh the committed p4info fixtures |
 | `container/p4rt.sh gen-types` | regenerate the committed Scala types from those fixtures |
-| `container/p4rt.sh gen-vm` | same as `gen`, using the older p4c the mininet VM ships |
+| `container/p4rt.sh gen-vm` | compile `quackmpp.p4` with the VM-era p4c into a side-by-side `quackmpp.vm-era.p4info.json` for comparison — does **not** touch the committed fixtures |
 
 There is also `container/compose.yaml`, but it is **Docker only** — Apple's
 `container` has no compose support (`container compose` reports

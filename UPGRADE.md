@@ -4,8 +4,8 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 (the OOPSLA artifact) is being brought up to date to serve as the control-plane
 binding library for **QuackMPP**.
 
-Verified on **JDK 25.0.3 / sbt 2.0.3 / Scala 3.8.4**, cold action cache:
-`compile` and `testFull` both green, 12/12 tests passing.
+Verified cold (action cache cleared) on **sbt 2.0.3 / Scala 3.8.4**; CI builds
+both **JDK 25 and 26**. `compile` and `testFull` green, 23/23 tests passing.
 
 ---
 

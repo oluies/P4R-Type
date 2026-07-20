@@ -24,9 +24,6 @@ import matchkinds.{TableMatchFields, TableAction, ActionParams}
   */
 class MatchKindsSuite extends munit.FunSuite {
 
-  // Bit widths from the p4info, for reference when reading the values below:
-  //   srcAddr bit<32>, totalLen bit<16>, protocol bit<8>, dstAddr bit<32>,
-  //   bucket bit<16>, and forward(port bit<9>, dstAddr bit<48>).
   /** One builder, varying only the arm the omitted-field test is about.
     *
     * `TableEntry`'s constructor is private, so `copy` is inaccessible and a
@@ -39,6 +36,9 @@ class MatchKindsSuite extends munit.FunSuite {
   private def entryWith(protocol : Option[("hdr.ipv4.protocol", Optional)]) =
     TableEntry[TableMatchFields, TableAction, ActionParams](
       "MatchKinds.acl",
+      // Bit widths from the p4info, for reference when reading the values:
+      //   srcAddr bit<32>, totalLen bit<16>, protocol bit<8>, dstAddr bit<32>,
+      //   bucket bit<16>, and forward(port bit<9>, dstAddr bit<48>).
       (
         // value & mask == value, as P4Runtime requires of a ternary field — a
         // server rejects anything else with INVALID_ARGUMENT. Nothing here sends
