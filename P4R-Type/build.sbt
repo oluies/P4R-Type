@@ -17,6 +17,37 @@ lazy val root = project
     version      := "0.1.0-SNAPSHOT",
     scalaVersion := scala3Version,
 
+    // --- Maven Central (Central Portal) publishing metadata -----------------
+    // Central rejects a POM missing any of these. `io.github.oluies` is a
+    // namespace the Central Portal verifies through the matching GitHub account,
+    // which is why the organization above was chosen that way.
+    //
+    // NOTE on mechanics: sbt-sonatype is deprecated and has no sbt 2 build, and
+    // the `sonaUpload`/`localStaging` commands in the sbt 2.x Central recipe are
+    // not present in sbt 2.0.3 (the latest sbt). So the release path here is
+    // sbt-pgp `publishSigned` into `target/central-staging`, then a bundle upload
+    // to the Central Portal — see PUBLISHING.md. This block is only the metadata;
+    // it changes nothing about compile/test/CI.
+    description  := "A verified, type-safe P4Runtime control-plane API for Scala 3: " +
+      "types generated from a p4info make a renamed or removed P4 match field a compile error.",
+    homepage     := Some(url("https://github.com/oluies/P4R-Type")),
+    licenses     := List("MIT" -> url("https://opensource.org/licenses/MIT")),
+    developers   := List(
+      Developer("oluies", "Örjan Lundberg", "orjan@lundberg.me", url("https://github.com/oluies"))
+    ),
+    scmInfo := Some(ScmInfo(
+      url("https://github.com/oluies/P4R-Type"),
+      "scm:git:https://github.com/oluies/P4R-Type.git"
+    )),
+    // Lets consumers' resolvers reason about binary compatibility across 0.x.
+    versionScheme := Some("early-semver"),
+    publishMavenStyle := true,
+    // publishSigned lands here in Maven layout; the release bundle is this tree
+    // zipped. A real Central endpoint is never configured in the build — upload
+    // is out-of-band (Portal web UI or its Publisher API), so a stray `publish`
+    // cannot reach the internet.
+    publishTo := Some(Resolver.file("central-staging", target.value / "central-staging")),
+
     // parseP4info calls System.exit on its error paths, and sbt's trapExit needs
     // a SecurityManager, which JDK 24+ refuses to install — so unforked, that
     // exit runs in sbt's own JVM. In practice sbt 2 survives it (it reports
