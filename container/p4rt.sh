@@ -21,7 +21,13 @@ P4DIR="$HERE/../P4R-Type/examples/src/main/p4"
 PROJ="$HERE/../P4R-Type"
 
 BMV2_IMAGE="p4lang/behavioral-model:latest"
-P4C_IMAGE="p4lang/p4c:latest"
+# PINNED, and this is the version the committed fixtures were generated with, so
+# `gen`/`gen-types` reproduce them byte-for-byte and CI (which pins the same tag)
+# stays green. `latest` was here until 2026-07-21, when it shipped a build whose
+# p4c-bm2-ss could not load libboost_iostreams.so.1.83.0 — a fixture check must
+# not ride a moving tag. To re-check against a newer p4c, bump this deliberately
+# and regenerate the fixtures if the output changed.
+P4C_IMAGE="p4lang/p4c:1.2.5.15"
 # vm/ installs p4lang-p4c 1.2.4.2 from the home:p4lang OBS repo; 1.2.4.3 is the
 # closest tag p4lang publishes as an image.
 P4C_VM_IMAGE="p4lang/p4c:1.2.4.3"

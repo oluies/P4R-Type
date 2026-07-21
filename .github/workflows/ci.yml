@@ -93,7 +93,20 @@ jobs:
       - name: Recompile the P4 and compare the emitted p4info
         shell: bash
         env:
-          IMAGE: p4lang/p4c:latest
+          # PINNED, not `latest`, and this is the version that generated the
+          # committed fixtures. On 2026-07-21 `p4lang/p4c:latest` shipped a build
+          # whose p4c-bm2-ss could not start ("error while loading shared
+          # libraries: libboost_iostreams.so.1.83.0"), turning this job red on a
+          # docs-only commit — a moving `latest` is not something a fixture check
+          # should depend on.
+          #
+          # Tradeoff, stated plainly: pinning to the fixtures' own version makes
+          # the byte-diff always match, so drift detection no longer happens
+          # automatically. It now happens when this pin is *bumped*: raise the
+          # tag, and if the emitted p4info differs from the committed fixture the
+          # diff below fails the PR — which is drift caught reviewably, instead of
+          # a `latest` that silently changes what is tested and randomly breaks.
+          IMAGE: p4lang/p4c:1.2.5.15
           # Output goes to its own directory, bind-mounted separately, so the
           # build artifact never lands in the checked-out source tree.
           OUTDIR: ${{ runner.temp }}/p4c-out
@@ -131,7 +144,7 @@ jobs:
                    -v "$PWD/P4R-Type:/proj:ro" -v "$OUTDIR:/out" \
                    -w /proj/examples/src/main/p4 "$IMAGE" \
                    sh -c "p4c --target bmv2 --arch v1model --p4runtime-files /out/$(basename "$FRESH") -o /tmp $P4NAME"; then
-              echo "::error::p4c failed to compile $P4FILE — a compile error, not drift."
+              echo "::error::p4c exited non-zero on $P4FILE — a p4c/toolchain error (compile error, or a broken image: see p4c output above), not drift."
               exit 1
             fi
 
