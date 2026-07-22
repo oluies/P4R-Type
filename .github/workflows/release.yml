@@ -81,14 +81,9 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Releasing version $V"
 
-      # The suite runs before anything is signed. Publishing an artifact whose
-      # own tests fail is worse than not publishing: Central releases are
-      # immutable, so a bad 0.1.0 can only ever be superseded, never withdrawn.
-      # (`testFull`, not `test` — sbt 2's `test` is incremental and will report
-      # success having run nothing. See ARCHITECTURE.md / the sbt skill.)
-      - name: Compile and test
-        run: sbt -batch "compile; Test/compile; testFull; examples/compile"
-
+      # MUST come before any sbt invocation: it exports PGP_KEY_ID through
+      # $GITHUB_ENV, which only reaches *later* steps — and the sbt server, once
+      # started, keeps the environment it was born with (see the next step).
       - name: Import signing key
         env:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
@@ -105,14 +100,39 @@ jobs:
           echo "PGP_KEY_ID=$FPR" >> "$GITHUB_ENV"
           echo "signing key: $FPR"
 
-      # build.sbt turns PGP_PASSPHRASE into sbt-pgp's `pgpPassphrase`, which
-      # makes it invoke gpg with --batch --pinentry-mode loopback. Without that
-      # the runner has no TTY and gpg dies with "Inappropriate ioctl for device".
-      - name: Sign and stage
+      # ONE sbt invocation, deliberately — testing and signing are not split into
+      # two steps, and must not be.
+      #
+      # sbt 2 runs a background server that **outlives the step that started
+      # it**, and the build's `sys.env` lookups are evaluated once, when that
+      # server loads the build. A later step setting RELEASE_VERSION or
+      # PGP_PASSPHRASE in its own shell changes nothing: the thin client just
+      # attaches to the server already running with the old environment. That is
+      # precisely how this workflow failed the first time — a separate test step
+      # ran first, so signing then produced `0.1.0-SNAPSHOT.pom` and invoked
+      # `gpg --use-agent` with no passphrase, dying on the runner's absent TTY.
+      # (container/p4rt.sh carries the same warning for P4RT_BMV2, and works
+      # around it with `sbt shutdown`.)
+      #
+      # A single invocation makes the hazard structurally impossible rather than
+      # relying on step order staying correct. Command order still gives the
+      # property that matters: `testFull` runs before `publishSigned` and aborts
+      # the chain on failure, so an artifact whose own tests fail can never be
+      # signed — Central releases are immutable, and a bad 0.1.0 can only ever be
+      # superseded, never withdrawn. (`testFull`, not `test`: sbt 2's `test` is
+      # incremental and will report success having run nothing.)
+      - name: Test, sign and stage
         env:
           RELEASE_VERSION: ${{ steps.ver.outputs.version }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-        run: sbt -batch "clean; publishSigned"
+        run: |
+          set -euo pipefail
+          if [ -z "${PGP_PASSPHRASE:-}" ]; then
+            echo "::error::secret PGP_PASSPHRASE is not set — signing would fall back"
+            echo "::error::to gpg --use-agent, which cannot prompt on a runner."
+            exit 1
+          fi
+          sbt -batch "print version; clean; compile; Test/compile; testFull; examples/compile; publishSigned"
 
       # Located, never hardcoded: sbt 2 resolves `target.value` to
       # target/out/jvm/scala-<v>/<project>/, so the path moves with the Scala
@@ -126,7 +146,16 @@ jobs:
           STAGE=$(find target -type d -name central-staging | head -1)
           test -n "$STAGE" || { echo "::error::publishSigned wrote no central-staging tree"; exit 1; }
           DIR="$STAGE/io/github/oluies/p4rt-scala_3/$VERSION"
-          test -d "$DIR" || { echo "::error::no staged artifacts at $DIR"; exit 1; }
+          # This is the backstop for RELEASE_VERSION not reaching sbt: the build
+          # then stages `0.1.0-SNAPSHOT` instead, which Central would reject
+          # anyway — but the message should name the cause, not the symptom.
+          if [ ! -d "$DIR" ]; then
+            GOT=$(ls "$STAGE/io/github/oluies/p4rt-scala_3" 2>/dev/null | tr '\n' ' ')
+            echo "::error::expected staged version '$VERSION', but sbt staged: $GOT"
+            echo "::error::RELEASE_VERSION did not reach the build — check that no"
+            echo "::error::earlier step started an sbt server without it."
+            exit 1
+          fi
 
           # Central requires a signature and both checksums beside every
           # artifact, and rejects the whole deployment if one is missing.
