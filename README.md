@@ -89,8 +89,12 @@ request:
     the LTS baseline and the current JDK. `fail-fast: false`, so a break on one
     and not the other is visible rather than cancelled.
   * **p4info fixture matches real p4c** — recompiles every committed `.p4` with
-    `p4lang/p4c` and diffs the result against the committed fixture, so a newer
-    p4c emitting a field we do not model is caught rather than discovered later.
+    the pinned `p4lang/p4c:1.2.5.15` and diffs the result against the committed
+    fixture, so a fixture edited by hand, or a `.p4` changed without
+    regenerating, is caught rather than discovered later. Because the image is
+    pinned to the version that generated the fixtures, drift against a *newer*
+    p4c is not caught here — that surfaces when the pin is bumped, as a
+    reviewable diff on the bumping PR.
 
 All three are required status checks on `main`, which also rejects force-pushes
 and deletion. Administrators are exempt, so direct pushes still work — CI is

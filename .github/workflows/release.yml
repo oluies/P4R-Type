@@ -143,7 +143,11 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          STAGE=$(find target -type d -name central-staging | head -1)
+          # `-print -quit` rather than `| head -1`: under `set -o pipefail`, head
+          # exiting first can leave find writing into a closed pipe, and the
+          # resulting SIGPIPE (141) would abort this step. Also stops at the
+          # first hit instead of walking the whole tree.
+          STAGE=$(find target -type d -name central-staging -print -quit)
           test -n "$STAGE" || { echo "::error::publishSigned wrote no central-staging tree"; exit 1; }
           DIR="$STAGE/io/github/oluies/p4rt-scala_3/$VERSION"
           # This is the backstop for RELEASE_VERSION not reaching sbt: the build
@@ -217,11 +221,21 @@ jobs:
           # From here the artifact is already at Central. A flaky poll must not
           # be reported as a failed release, so the loop only ever *reports* —
           # the one thing it fails on is Central itself saying FAILED.
+          #
+          # The `|| true` is what actually buys that, and it is not decoration:
+          # this step runs under `set -euo pipefail`, so a transient curl failure
+          # would propagate through the pipeline and kill the step *after* a
+          # successful upload — reporting a failed release for a network blip,
+          # the precise outcome the paragraph above promises to avoid. The
+          # `// "UNKNOWN"` jq fallback does not help there; it only covers a
+          # well-formed response with no deploymentState.
           for _ in $(seq 1 30); do
             sleep 10
             STATE=$(curl -sS -X POST \
               "https://central.sonatype.com/api/v1/publisher/status?id=$ID" \
-              -H "Authorization: Bearer $AUTH" | jq -r '.deploymentState // "UNKNOWN"')
+              -H "Authorization: Bearer $AUTH" \
+              | jq -r '.deploymentState // "UNKNOWN"' || true)
+            STATE=${STATE:-UNKNOWN}
             echo "  state: $STATE"
             case "$STATE" in
               PUBLISHED|VALIDATED) break ;;

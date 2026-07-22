@@ -10,7 +10,7 @@
 # does the same thing on either runtime — prefer it if you use both.
 #
 #   docker compose up -d bmv2                    # a switch on localhost:9559
-#   docker compose --profile tools run --rm p4c  # regenerate the p4info fixture
+#   docker compose --profile tools run --rm p4c  # regenerate the p4info fixtures
 #   docker compose --profile vm    run --rm p4c-vm  # ...with the VM's p4c
 
 services:
@@ -38,16 +38,27 @@ services:
       retries: 30
       start_period: 3s
 
-  # One-shot: recompile quackmpp.p4 and refresh the committed p4info fixture.
-  # Same image tag CI's p4info-fixture job uses, so local and CI agree.
+  # One-shot: recompile every committed .p4 and refresh its p4info fixture.
   #
-  # It writes the *fixture* directly. There is exactly one committed p4info for
-  # quackmpp.p4 — P4R-Type/src/test/resources/quackmpp_exchange.p4info.json — and
-  # that is the one the tests and the CI job read. An earlier version wrote a
-  # second copy next to the .p4, which nothing read: you could "regenerate" it,
-  # see no test change, and conclude the fixture was current.
+  # PINNED to the same tag as ci.yml and p4rt.sh, and that pin must move in all
+  # three at once. This service writes the committed fixtures *directly*, so on a
+  # different p4c it silently replaces them with output from a version CI does
+  # not use — and the pinned CI job then fails with a diff whose real cause is
+  # the regeneration tool, not the .p4. It was left on `latest` when the other
+  # two were pinned, which is exactly that hazard: `latest` was broken at the
+  # time (see ci.yml), so this path was also simply unrunnable.
+  #
+  # There is exactly one committed p4info per .p4 —
+  # P4R-Type/src/test/resources/*.p4info.json — and that is what the tests and
+  # the CI job read. An earlier version wrote a second copy next to the .p4,
+  # which nothing read: you could "regenerate" it, see no test change, and
+  # conclude the fixture was current.
+  #
+  # Both fixtures, matching `p4rt.sh gen`. matchkinds.p4 was added after this
+  # service and was not wired in, so a Docker user regenerating "the fixture"
+  # refreshed one of two and could leave the other stale.
   p4c:
-    image: p4lang/p4c:latest
+    image: p4lang/p4c:1.2.5.15
     platform: linux/amd64
     profiles: ["tools"]
     volumes:
@@ -57,11 +68,16 @@ services:
       - sh
       - -c
       - |
-        p4c --target bmv2 --arch v1model \
-            --p4runtime-files /proj/src/test/resources/quackmpp_exchange.p4info.json \
-            -o /tmp quackmpp.p4 &&
-        echo "refreshed src/test/resources/quackmpp_exchange.p4info.json with $$(p4c --version | head -1)" &&
-        echo "now: sbt \"runMain typegen.parseP4info src/test/resources/quackmpp_exchange.p4info.json quackmpp\""
+        set -e
+        for p4 in quackmpp:quackmpp_exchange matchkinds:matchkinds; do
+          src="$${p4%%:*}.p4"; fixture="$${p4##*:}.p4info.json"
+          p4c --target bmv2 --arch v1model \
+              --p4runtime-files "/proj/src/test/resources/$$fixture" \
+              -o /tmp "$$src"
+          echo "refreshed src/test/resources/$$fixture"
+        done
+        echo "with $$(p4c --version | head -1)"
+        echo "now run on the host, from the repo root: container/p4rt.sh gen-types"
 
   # The p4c the mininet VM actually ships (vm/ installs p4lang-p4c 1.2.4.2 from
   # the home:p4lang OBS repo; 1.2.4.3 is the closest published image).

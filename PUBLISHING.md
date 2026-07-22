@@ -164,7 +164,7 @@ terminal:
 ```bash
 cd P4R-Type
 RELEASE_VERSION=0.1.0 sbt "clean; publishSigned"
-STAGE=$(find target -type d -name central-staging | head -1)
+STAGE=$(find target -type d -name central-staging -print -quit)
 (cd "$STAGE" && zip -qr /tmp/p4rt-scala-0.1.0-bundle.zip io)
 ```
 
