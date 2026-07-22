@@ -4,6 +4,18 @@ val grpcVersion   = "1.82.2"
 val protobufVersion = "4.35.1"   // must match what scalapb-runtime pulls
 val munitVersion  = "1.3.4"
 
+// --- Release signing, driven entirely by environment ------------------------
+// Set only in the release workflow (from repo secrets). Unset everywhere else,
+// which is what makes an interactive `publishSigned` still prompt normally
+// through pinentry: `None` means sbt-pgp omits --passphrase and gpg asks.
+//
+// With a passphrase present sbt-pgp's CommandLineGpgSigner runs
+// `gpg --batch --pinentry-mode loopback --passphrase <pw> --detach-sign`,
+// which is the only form that signs on a runner with no TTY — a plain
+// --use-agent invocation there dies with "Inappropriate ioctl for device".
+ThisBuild / pgpPassphrase := sys.env.get("PGP_PASSPHRASE").map(_.toCharArray)
+ThisBuild / pgpSigningKey := sys.env.get("PGP_KEY_ID")
+
 // The library. This is the only thing published, and it must contain only the
 // P4R-Type API + generated P4Runtime bindings + typegen — see `examples` below.
 lazy val root = project
@@ -14,7 +26,12 @@ lazy val root = project
     // Downstream consumers (QuackMPP's Mill build) need a real one.
     organization := "io.github.oluies",
     name         := "p4rt-scala",
-    version      := "0.1.0-SNAPSHOT",
+    // The release workflow derives this from the pushed tag (v0.1.0 ->
+    // RELEASE_VERSION=0.1.0), so cutting a release never edits a tracked file
+    // and the published version cannot disagree with the tag it came from.
+    // Unset, the build stays a snapshot — which is what every non-release
+    // build, including all of CI, sees.
+    version      := sys.env.getOrElse("RELEASE_VERSION", "0.1.0-SNAPSHOT"),
     scalaVersion := scala3Version,
 
     // --- Maven Central (Central Portal) publishing metadata -----------------

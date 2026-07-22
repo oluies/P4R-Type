@@ -1,0 +1,222 @@
+name: Release
+
+# Publishes to Maven Central. Two ways in:
+#
+#   * push a `v*` tag        -> real release, version derived from the tag
+#   * workflow_dispatch      -> dry run by default: builds, signs, verifies and
+#                               bundles, but uploads nothing. Use it to prove the
+#                               pipeline before trusting it with a real version.
+#
+# Why CI rather than a laptop: the signing key and the Portal token live in repo
+# secrets and are never on a developer machine or in a shell history, the
+# published bits are built from a clean checkout of a tagged commit, and the
+# version cannot disagree with the tag because it *is* the tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build, sign and verify, but do not upload'
+        type: boolean
+        default: true
+      version:
+        description: 'Version to stage in a dry run (ignored for tag pushes)'
+        type: string
+        default: '0.0.0-dryrun'
+      publishing_type:
+        description: 'USER_MANAGED = review in the Portal before it goes public'
+        type: choice
+        options: [USER_MANAGED, AUTOMATIC]
+        default: USER_MANAGED
+
+# A release must never be cancelled halfway by a second one starting.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: P4R-Type
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 25, not 26: the LTS is the floor consumers are promised, and an artifact
+      # built on a newer JDK can carry a class-file version the floor cannot
+      # read. CI's matrix is what proves 26 also *builds*; the release is cut on
+      # the baseline.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Determine version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = push ]; then
+            V="${GITHUB_REF_NAME#v}"          # v0.1.0 -> 0.1.0
+          else
+            V="${{ inputs.version }}"
+          fi
+          # Central's release repository rejects snapshots, and it rejects them
+          # *after* the upload — surfacing it here costs nothing and saves a
+          # failed deployment that has to be dropped by hand.
+          case "$V" in
+            ''|*SNAPSHOT*) echo "::error::refusing to release version '$V'"; exit 1 ;;
+          esac
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing version $V"
+
+      # The suite runs before anything is signed. Publishing an artifact whose
+      # own tests fail is worse than not publishing: Central releases are
+      # immutable, so a bad 0.1.0 can only ever be superseded, never withdrawn.
+      # (`testFull`, not `test` — sbt 2's `test` is incremental and will report
+      # success having run nothing. See ARCHITECTURE.md / the sbt skill.)
+      - name: Compile and test
+        run: sbt -batch "compile; Test/compile; testFull; examples/compile"
+
+      - name: Import signing key
+        env:
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PGP_SECRET:-}" ]; then
+            echo "::error::secret PGP_SECRET is not set — see PUBLISHING.md"; exit 1
+          fi
+          printf '%s' "$PGP_SECRET" | base64 --decode | gpg --batch --quiet --import
+          # Derived, not a fifth secret. A fingerprint is public, so echoing it
+          # is safe and makes "signed with the wrong key" visible in the log.
+          FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/{print $10; exit}')
+          test -n "$FPR" || { echo "::error::no secret key after import"; exit 1; }
+          echo "PGP_KEY_ID=$FPR" >> "$GITHUB_ENV"
+          echo "signing key: $FPR"
+
+      # build.sbt turns PGP_PASSPHRASE into sbt-pgp's `pgpPassphrase`, which
+      # makes it invoke gpg with --batch --pinentry-mode loopback. Without that
+      # the runner has no TTY and gpg dies with "Inappropriate ioctl for device".
+      - name: Sign and stage
+        env:
+          RELEASE_VERSION: ${{ steps.ver.outputs.version }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+        run: sbt -batch "clean; publishSigned"
+
+      # Located, never hardcoded: sbt 2 resolves `target.value` to
+      # target/out/jvm/scala-<v>/<project>/, so the path moves with the Scala
+      # version. PUBLISHING.md documented `target/central-staging` — a path that
+      # has never existed under sbt 2.
+      - name: Verify the staged bundle
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          STAGE=$(find target -type d -name central-staging | head -1)
+          test -n "$STAGE" || { echo "::error::publishSigned wrote no central-staging tree"; exit 1; }
+          DIR="$STAGE/io/github/oluies/p4rt-scala_3/$VERSION"
+          test -d "$DIR" || { echo "::error::no staged artifacts at $DIR"; exit 1; }
+
+          # Central requires a signature and both checksums beside every
+          # artifact, and rejects the whole deployment if one is missing.
+          for base in .jar -sources.jar -javadoc.jar .pom; do
+            f="$DIR/p4rt-scala_3-$VERSION$base"
+            for suffix in "" .asc .md5 .sha1 .asc.md5 .asc.sha1; do
+              test -s "$f$suffix" || { echo "::error::missing or empty $f$suffix"; exit 1; }
+            done
+            # Existence is not validity: an unsigned or wrongly-signed artifact
+            # produces a file of plausible size that Central rejects on upload.
+            gpg --verify "$f.asc" "$f" 2>&1 | grep -q "Good signature" \
+              || { echo "::error::signature does not verify for $f"; exit 1; }
+            echo "  ok  $(basename "$f")"
+          done
+
+          # Zip from inside the tree so the archive's top-level entry is `io/`,
+          # which is the layout the Portal expects.
+          BUNDLE="$PWD/p4rt-scala-$VERSION-bundle.zip"
+          (cd "$STAGE" && zip -qr "$BUNDLE" io)
+          echo "BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+          unzip -l "$BUNDLE" | tail -n +4 | head -5
+
+      # Kept regardless of what the upload does, so a Portal-side rejection can
+      # be diagnosed against the exact bytes that were sent.
+      - name: Upload bundle as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-bundle-${{ steps.ver.outputs.version }}
+          path: P4R-Type/p4rt-scala-${{ steps.ver.outputs.version }}-bundle.zip
+          if-no-files-found: error
+
+      - name: Publish to the Central Portal
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          PUBLISHING_TYPE: ${{ inputs.publishing_type || 'USER_MANAGED' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CENTRAL_USERNAME:-}" ] || [ -z "${CENTRAL_PASSWORD:-}" ]; then
+            echo "::error::CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD are not set"; exit 1
+          fi
+          AUTH=$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)
+
+          # -f would hide the response body, and the body is where Central
+          # explains *why* it rejected a bundle. Take the status code instead.
+          CODE=$(curl -sS -o /tmp/upload.out -w '%{http_code}' \
+            -X POST "https://central.sonatype.com/api/v1/publisher/upload?name=p4rt-scala-$VERSION&publishingType=$PUBLISHING_TYPE" \
+            -H "Authorization: Bearer $AUTH" \
+            -F "bundle=@$BUNDLE;type=application/octet-stream")
+          echo "HTTP $CODE"; cat /tmp/upload.out; echo
+          if [ "$CODE" != "201" ]; then
+            echo "::error::Central rejected the upload (HTTP $CODE, body above)"; exit 1
+          fi
+          ID=$(cat /tmp/upload.out)
+          echo "deployment id: $ID"
+
+          # From here the artifact is already at Central. A flaky poll must not
+          # be reported as a failed release, so the loop only ever *reports* —
+          # the one thing it fails on is Central itself saying FAILED.
+          for _ in $(seq 1 30); do
+            sleep 10
+            STATE=$(curl -sS -X POST \
+              "https://central.sonatype.com/api/v1/publisher/status?id=$ID" \
+              -H "Authorization: Bearer $AUTH" | jq -r '.deploymentState // "UNKNOWN"')
+            echo "  state: $STATE"
+            case "$STATE" in
+              PUBLISHED|VALIDATED) break ;;
+              FAILED) echo "::error::deployment $ID FAILED — see the Portal"; exit 1 ;;
+            esac
+          done
+          {
+            echo "### Deployed to Maven Central"
+            echo ""
+            echo "- version: \`$VERSION\`"
+            echo "- deployment: \`$ID\` (state \`${STATE:-unknown}\`)"
+            echo "- publishing type: \`$PUBLISHING_TYPE\`"
+            if [ "$PUBLISHING_TYPE" = USER_MANAGED ]; then
+              echo ""
+              echo "**Not public yet** — press *Publish* at <https://central.sonatype.com/publishing/deployments>."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry run summary
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          {
+            echo "### Dry run — nothing was uploaded"
+            echo ""
+            echo "Built, signed and verified \`${{ steps.ver.outputs.version }}\`."
+            echo "The bundle is attached to this run as an artifact."
+          } >> "$GITHUB_STEP_SUMMARY"

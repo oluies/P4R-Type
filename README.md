@@ -101,6 +101,15 @@ Dependency updates arrive as CI-gated PRs from
 come from Dependabot, since Steward does not cover them. Neither proposes JDK
 upgrades, which is why the JDK matrix above is maintained by hand.
 
+### Releases
+
+Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which tests, signs and uploads the artifact to Maven Central; the published
+version is derived from the tag, so the two cannot disagree. The same workflow
+has a dry-run mode that does everything except upload. Signing keys and the
+Portal token are repo secrets — releasing never touches a developer machine.
+See [PUBLISHING.md](PUBLISHING.md).
+
 **Note for OOPSLA artifact version:** As an alternative to building the VM image with Vagrant, the top folder also contains the file `P4R-Type_Demo_VM.ova`, a ready-to-use VM image. It can be imported with the VirtualBox interface using the default settings. In case you use this method for setting up the VM, skip the first three steps of the **Kick-the-Tires Guide** and start the VM directly from VirtualBox instead.
 
 The OOPSLA artifact version which includes the VM image can be found [here](https://dl.acm.org/do/10.1145/3580420).
