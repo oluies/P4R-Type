@@ -15,8 +15,10 @@ about a release is done by hand on a laptop, and no credential ever sits in a
 shell history: the signing key and the Portal token are repo secrets, the
 artifact is built from a clean checkout, and the published version cannot
 disagree with the tag because it *is* the tag (`v0.1.0` → `RELEASE_VERSION=0.1.0`,
-consumed by `version` in `build.sbt`). Between releases `main` stays
-`0.1.0-SNAPSHOT`; no release ever edits a tracked file.
+consumed by `version` in `build.sbt`). Between releases `main` stays on the next
+`-SNAPSHOT`; no release ever edits a tracked file.
+
+**Released:** `0.1.0`, on 2026-07-22, from tag `v0.1.0`.
 
 ## Why the setup is non-standard
 
@@ -123,9 +125,12 @@ build-from-source job on the QuackMPP side can be deleted.
 
 ### 5. Bump
 
-Nothing to do — `main` is already `0.1.0-SNAPSHOT`. When cutting `0.1.1` or
-`0.2.0`, bump the fallback in `build.sbt` if you want local snapshot builds to
-carry the newer number; the released version comes from the tag either way.
+Move the fallback in `build.sbt` to the next `-SNAPSHOT` so local and CI builds
+stop claiming a version that is already published and immutable on Central. It is
+`0.1.1-SNAPSHOT` now that `0.1.0` is out. The released version comes from the tag
+either way, so this only affects non-release builds — but a snapshot sharing a
+number with a released artifact is exactly the ambiguity that makes a consumer's
+resolver report the wrong thing.
 
 ## What has actually been verified, and what has not
 
@@ -145,9 +150,15 @@ GPG key in an isolated keyring**, not merely reasoned about. Confirmed:
 * The POM carries every field Central demands and no `SNAPSHOT` dependency.
 * The published jar has nothing in the default package and no `examples`.
 
-**Not verified:** the upload itself. It needs live credentials, so it runs for
-the first time on your first real release — which is what the dry run and the
-`USER_MANAGED` review step exist to de-risk.
+**The upload is now proven too.** `0.1.0` was released through this workflow on
+the `v0.1.0` tag and is live on Maven Central. Verified from a consumer's
+position rather than from the build that produced it: every artifact and its
+`.asc`/`.md5`/`.sha1` is present under
+<https://repo1.maven.org/maven2/io/github/oluies/p4rt-scala_3/0.1.0/>, the
+published `.sha1` matches the downloaded jar, and both the jar and POM
+signatures verify against the key fetched fresh from `keyserver.ubuntu.com` —
+not from a local keyring, which would only have proved the key signs its own
+output.
 
 **A trap worth naming:** the staging tree is **not** at `target/central-staging`.
 sbt 2 resolves `target.value` per project, so it lands at

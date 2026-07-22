@@ -31,7 +31,7 @@ lazy val root = project
     // and the published version cannot disagree with the tag it came from.
     // Unset, the build stays a snapshot — which is what every non-release
     // build, including all of CI, sees.
-    version      := sys.env.getOrElse("RELEASE_VERSION", "0.1.0-SNAPSHOT"),
+    version      := sys.env.getOrElse("RELEASE_VERSION", "0.1.1-SNAPSHOT"),
     scalaVersion := scala3Version,
 
     // --- Maven Central (Central Portal) publishing metadata -----------------

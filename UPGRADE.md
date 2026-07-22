@@ -428,8 +428,16 @@ Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"
 so QuackMPP depends on it via:
 
 ```scala
-def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0-SNAPSHOT")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0")
 ```
+
+> **Superseded, and this is the good outcome.** The paragraph below worked out how
+> QuackMPP would resolve a `publishLocal` snapshot from `~/.ivy2/local`. That is no
+> longer necessary: `0.1.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
+> which coursier queries by default with no authentication and no local publish step.
+> It also removes what the local path forced on the consumer — a `.p4rt-version`
+> marker file, a build-from-source job, its cache and pin guard. Kept below because
+> the resolver reasoning still applies to any future snapshot testing.
 
 On the resolver question: Mill resolves through coursier, and coursier's documented
 defaults are "the Ivy2 local repository, `~/.ivy2/local`, [and] Maven Central" — so

@@ -1,6 +1,16 @@
 # P4R-Type artifact instructions
 
 [![CI](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml/badge.svg)](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/p4rt-scala_3?label=maven%20central)](https://central.sonatype.com/artifact/io.github.oluies/p4rt-scala_3)
+
+**Published to Maven Central** — consumers resolve it with no authentication:
+
+```scala
+// sbt
+libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.1.0"
+// Mill 0.12+/1.x
+mvn"io.github.oluies::p4rt-scala:0.1.0"
+```
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
