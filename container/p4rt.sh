@@ -90,9 +90,12 @@ case "${1:-}" in
     ;;
 
   gen)
-    # Writes the fixtures directly. There is exactly one committed p4info per
-    # .p4 and that is what the tests and CI read; generating a second copy next
-    # to the .p4 only creates something to drift.
+    # Writes the two generated fixtures directly, one per .p4; that is what the
+    # tests and CI read, so generating a second copy next to the .p4 only creates
+    # something to drift. (The sibling legacy_actionprofile.p4info.json is
+    # hand-written, has no .p4, and must not be regenerated here.) This same
+    # (source, fixture) set is duplicated in ci.yml's PAIRS and compose.yaml's
+    # p4c service; keep the three in sync when adding a .p4.
     #
     # quackmpp.p4    — the spec 003 shape: EXACT on `bucket`, action params.
     # matchkinds.p4  — TERNARY/RANGE/OPTIONAL/LPM/EXACT on one table. Nothing

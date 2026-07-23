@@ -387,13 +387,25 @@ Rationale:
 
 ### How QuackMPP consumes it
 
+> **Superseded, and this is the good outcome.** This whole section worked out how
+> QuackMPP would resolve a `publishLocal` snapshot from `~/.ivy2/local`. That is no
+> longer necessary: `0.1.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
+> which coursier queries by default with no authentication and no local publish step
+> — so the consumer just adds the `mvnDeps` line at the end of this section. It also
+> removes what the local path forced on the consumer: a `.p4rt-version` marker file,
+> a build-from-source job, its cache and pin guard. The walkthrough below is kept
+> because the jar-contents audit and the resolver reasoning still apply, and
+> `publishLocal` is still how you test an unreleased snapshot — but it now writes
+> `0.1.1-SNAPSHOT`, not the `0.1.0-SNAPSHOT` recorded below.
+
 `publishLocal` from `P4R-Type/`:
 
 ```bash
 cd P4R-Type && sbt -batch publishLocal
 ```
 
-Verified — this publishes to `~/.ivy2/local`:
+Verified at the time — this publishes to `~/.ivy2/local` (the fallback is now
+`0.1.1-SNAPSHOT`, so the coordinate reads `…;0.1.1-SNAPSHOT` today):
 
 ```
 io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT
@@ -430,14 +442,6 @@ so QuackMPP depends on it via:
 ```scala
 def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0")
 ```
-
-> **Superseded, and this is the good outcome.** The paragraph below worked out how
-> QuackMPP would resolve a `publishLocal` snapshot from `~/.ivy2/local`. That is no
-> longer necessary: `0.1.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
-> which coursier queries by default with no authentication and no local publish step.
-> It also removes what the local path forced on the consumer — a `.p4rt-version`
-> marker file, a build-from-source job, its cache and pin guard. Kept below because
-> the resolver reasoning still applies to any future snapshot testing.
 
 On the resolver question: Mill resolves through coursier, and coursier's documented
 defaults are "the Ivy2 local repository, `~/.ivy2/local`, [and] Maven Central" — so

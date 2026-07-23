@@ -101,14 +101,18 @@ upload.
 
 ### 2. Tag
 
+Set the version once so no command names a number that has already shipped
+(`0.1.0` is released and immutable — the next is `0.1.1`):
+
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+VERSION=0.1.1
+git tag "v$VERSION" && git push origin "v$VERSION"
 ```
 
 That triggers the real release. The workflow refuses any version containing
 `SNAPSHOT`, and runs `testFull` *before* signing — an artifact whose own tests
-fail must never reach Central, because a bad `0.1.0` can only be superseded,
-never withdrawn.
+fail must never reach Central, because a released version can only be
+superseded, never withdrawn.
 
 ### 3. Press Publish
 
@@ -125,12 +129,21 @@ build-from-source job on the QuackMPP side can be deleted.
 
 ### 5. Bump
 
-Move the fallback in `build.sbt` to the next `-SNAPSHOT` so local and CI builds
-stop claiming a version that is already published and immutable on Central. It is
-`0.1.1-SNAPSHOT` now that `0.1.0` is out. The released version comes from the tag
-either way, so this only affects non-release builds — but a snapshot sharing a
-number with a released artifact is exactly the ambiguity that makes a consumer's
-resolver report the wrong thing.
+Two kinds of literal version to move after a release; both are easy to leave
+behind, and a consumer reads the second kind:
+
+1. **The snapshot fallback** in `build.sbt` — move it to the next `-SNAPSHOT`
+   (`0.1.1-SNAPSHOT` now that `0.1.0` is out) so local and CI builds stop
+   claiming a number that is already published and immutable. The released
+   version comes from the tag regardless, so this only affects non-release
+   builds — but a snapshot sharing a number with a released artifact is exactly
+   the ambiguity that makes a resolver report the wrong thing.
+
+2. **The consumer coordinate**, wherever a released version is quoted for people
+   to copy. Today that is: `README.md` (sbt and Mill snippets near the top),
+   this file's header, and `UPGRADE.md` (the `mvnDeps` line). The Maven Central
+   badge in `README.md` auto-updates; the prose examples do not. Bump these only
+   when a release actually lands, not at the snapshot bump.
 
 ## What has actually been verified, and what has not
 
@@ -169,15 +182,31 @@ rather than hardcoding it.
 
 ## Releasing from a laptop instead
 
-Only if CI is unavailable. `gpg` must be able to prompt, so run it in a real
-terminal:
+Only if CI is unavailable, and it is genuinely more error-prone — the two
+guardrails the workflow gives you for free have to be written out by hand here.
+`gpg` must be able to prompt, so run this in a real terminal:
 
 ```bash
 cd P4R-Type
-RELEASE_VERSION=0.1.0 sbt "clean; publishSigned"
+VERSION=0.1.1
+
+# sbt 2's server outlives the shell that started it and keeps the environment it
+# was born with, so a server already running in this project would stage the old
+# snapshot version and ignore RELEASE_VERSION entirely (the exact failure the CI
+# workflow was restructured to make impossible). Kill it first.
+sbt shutdown 2>/dev/null || true
+
+RELEASE_VERSION=$VERSION sbt "clean; publishSigned"
+
 STAGE=$(find target -type d -name central-staging -print -quit)
-(cd "$STAGE" && zip -qr /tmp/p4rt-scala-0.1.0-bundle.zip io)
+# Assert what was actually staged before bundling. `find` returning non-empty is
+# not enough: a stale server stages a full, valid tree at the *wrong* version,
+# which the Portal only rejects after you have signed and uploaded it by hand.
+test -d "$STAGE/io/github/oluies/p4rt-scala_3/$VERSION" \
+  || { echo "sbt staged the wrong version (stale server?) — expected $VERSION"; exit 1; }
+
+(cd "$STAGE" && zip -qr "/tmp/p4rt-scala-$VERSION-bundle.zip" io)
 ```
 
-Then upload `/tmp/p4rt-scala-0.1.0-bundle.zip` through the Portal web UI. Tag the
-commit afterwards so history matches what was published.
+Then upload `/tmp/p4rt-scala-$VERSION-bundle.zip` through the Portal web UI. Tag
+the commit afterwards so history matches what was published.

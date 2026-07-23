@@ -65,8 +65,11 @@ jobs:
 
   # The p4info fixture the tests run against is committed so the suite stays fast
   # and container-free. This job is what keeps that commit honest: it recompiles
-  # every committed .p4 with real p4c and fails if the emitted p4info differs
-  # from the committed copy.
+  # each .p4 under examples/src/main/p4/ that has a generated fixture (the PAIRS
+  # below) with real p4c and fails if the emitted p4info differs from the
+  # committed copy. Not every committed .p4 — vm/files/ has five that are VM
+  # dataplanes with no fixture — and not every committed p4info: the hand-written
+  # legacy_actionprofile.p4info.json has no .p4 and must not be regenerated.
   #
   # Note what that does and does not cover, now that IMAGE is pinned to the
   # fixtures' own p4c (see the rationale on IMAGE below). It catches a fixture
@@ -120,7 +123,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$OUTDIR"
 
-          # One entry per committed p4info: "<p4 basename> <fixture path>".
+          # One entry per *generated* fixture: "<p4 basename> <fixture path>".
+          # Duplicated in container/compose.yaml's p4c service and in
+          # `p4rt.sh gen`; keep the three in sync when adding a .p4.
           # quackmpp.p4   — the spec 003 shape (EXACT on `bucket`, action params).
           # matchkinds.p4 — TERNARY/RANGE/OPTIONAL/LPM/EXACT on one table, the
           #                 only fixture with more than two match fields.

@@ -3,13 +3,17 @@
 [![CI](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml/badge.svg)](https://github.com/oluies/P4R-Type/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/p4rt-scala_3?label=maven%20central)](https://central.sonatype.com/artifact/io.github.oluies/p4rt-scala_3)
 
-**Published to Maven Central** — consumers resolve it with no authentication:
+**Published to Maven Central** — consumers resolve it with no authentication.
+Latest version is on the badge above; `0.1.0` is the first release. In sbt:
 
 ```scala
-// sbt
 libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.1.0"
-// Mill 0.12+/1.x
-mvn"io.github.oluies::p4rt-scala:0.1.0"
+```
+
+In Mill (0.12+/1.x — `mvn`/`mvnDeps`, renamed from `ivy`/`ivyDeps`):
+
+```scala
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0")
 ```
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
@@ -98,9 +102,10 @@ request:
   * **Build (JDK 25)** and **Build (JDK 26)** — the full command above, on both
     the LTS baseline and the current JDK. `fail-fast: false`, so a break on one
     and not the other is visible rather than cancelled.
-  * **p4info fixture matches real p4c** — recompiles every committed `.p4` with
-    the pinned `p4lang/p4c:1.2.5.15` and diffs the result against the committed
-    fixture, so a fixture edited by hand, or a `.p4` changed without
+  * **p4info fixture matches real p4c** — recompiles the `.p4` fixtures under
+    `P4R-Type/examples/src/main/p4/` with the pinned `p4lang/p4c` image (version
+    in [`ci.yml`](.github/workflows/ci.yml)) and diffs the result against the
+    committed fixture, so a fixture edited by hand, or a `.p4` changed without
     regenerating, is caught rather than discovered later. Because the image is
     pinned to the version that generated the fixtures, drift against a *newer*
     p4c is not caught here — that surfaces when the pin is bumped, as a

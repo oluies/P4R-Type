@@ -38,25 +38,29 @@ services:
       retries: 30
       start_period: 3s
 
-  # One-shot: recompile every committed .p4 and refresh its p4info fixture.
+  # One-shot: recompile the .p4 fixtures and refresh their p4info.
   #
-  # PINNED to the same tag as ci.yml and p4rt.sh, and that pin must move in all
-  # three at once. This service writes the committed fixtures *directly*, so on a
-  # different p4c it silently replaces them with output from a version CI does
-  # not use — and the pinned CI job then fails with a diff whose real cause is
-  # the regeneration tool, not the .p4. It was left on `latest` when the other
-  # two were pinned, which is exactly that hazard: `latest` was broken at the
-  # time (see ci.yml), so this path was also simply unrunnable.
+  # PINNED to the same tag as ci.yml and p4rt.sh. The tag lives in FOUR files —
+  # this one, .github/workflows/ci.yml, container/p4rt.sh, and (as prose)
+  # README.md — and they must move together. This service writes the committed
+  # fixtures *directly*, so on a different p4c it silently replaces them with
+  # output from a version CI does not use, and the pinned CI job then fails with
+  # a diff whose real cause is the regeneration tool, not the .p4. It was left on
+  # `latest` when the other two were pinned, which is exactly that hazard:
+  # `latest` was broken at the time (see ci.yml), so this path was unrunnable.
   #
-  # There is exactly one committed p4info per .p4 —
-  # P4R-Type/src/test/resources/*.p4info.json — and that is what the tests and
-  # the CI job read. An earlier version wrote a second copy next to the .p4,
-  # which nothing read: you could "regenerate" it, see no test change, and
-  # conclude the fixture was current.
+  # It regenerates exactly the two *generated* fixtures —
+  # quackmpp_exchange.p4info.json and matchkinds.p4info.json — each from its .p4.
+  # NOTE the sibling src/test/resources/legacy_actionprofile.p4info.json is NOT
+  # in this set: it is hand-written, has no .p4, and encodes a pre-v1.4.0 shape
+  # modern p4c cannot emit (QuackMppTypegenSuite reads it to assert rejection).
+  # Regenerating it would destroy that test — do not add it here.
   #
-  # Both fixtures, matching `p4rt.sh gen`. matchkinds.p4 was added after this
-  # service and was not wired in, so a Docker user regenerating "the fixture"
-  # refreshed one of two and could leave the other stale.
+  # This (source, fixture) list is duplicated in ci.yml's PAIRS and in
+  # `p4rt.sh gen`; adding a third .p4 means editing all three, and nothing
+  # detects divergence (that is how matchkinds was wired into two of three).
+  # Keep the three in sync. matchkinds.p4 was added after this service and left
+  # out here, so a Docker user could refresh one of two and leave the other stale.
   p4c:
     image: p4lang/p4c:1.2.5.15
     platform: linux/amd64

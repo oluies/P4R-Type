@@ -154,10 +154,22 @@ jobs:
           # then stages `0.1.0-SNAPSHOT` instead, which Central would reject
           # anyway — but the message should name the cause, not the symptom.
           if [ ! -d "$DIR" ]; then
-            GOT=$(ls "$STAGE/io/github/oluies/p4rt-scala_3" 2>/dev/null | tr '\n' ' ')
-            echo "::error::expected staged version '$VERSION', but sbt staged: $GOT"
-            echo "::error::RELEASE_VERSION did not reach the build — check that no"
-            echo "::error::earlier step started an sbt server without it."
+            # `|| true`: this runs under `set -euo pipefail`, and if the coordinate
+            # dir does not exist the `ls | tr` pipeline exits non-zero and would
+            # kill the step *here* — before any ::error below prints, leaving a
+            # bare exit with no annotation. That case (nothing staged under the
+            # coordinate) is exactly where the message matters most: a changed
+            # Scala suffix, `name`, or `organization` moves the path.
+            GOT=$(ls "$STAGE/io/github/oluies/p4rt-scala_3" 2>/dev/null | tr '\n' ' ' || true)
+            if [ -n "$GOT" ]; then
+              echo "::error::expected staged version '$VERSION', but sbt staged: $GOT"
+              echo "::error::RELEASE_VERSION did not reach the build — check that no"
+              echo "::error::earlier step started an sbt server without it."
+            else
+              echo "::error::nothing staged under p4rt-scala_3 — the artifact"
+              echo "::error::coordinate (Scala suffix / name / organization) moved,"
+              echo "::error::or publishSigned did not run."
+            fi
             exit 1
           fi
 
