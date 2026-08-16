@@ -192,8 +192,19 @@ def genTableAction(tables : Seq[Table], actions : Seq[P4InfoAction]) : Either[St
     }
   })
 } yield {
+  // Guard the reduce on empty, exactly as genTableMatchFields does above: a
+  // p4info with no tables (a counter-only program is a real p4c output) leaves
+  // matchActionCases empty, and `reduce` on an empty Seq throws
+  // UnsupportedOperationException — an exception that escapes this Either-typed
+  // API instead of surfacing as a Left. With no tables the type degrades to just
+  // the `case "*"` arm, which is well-formed.
   "type TableAction[TN] <: ActionName =\n  TN match\n"
-  + matchActionCases.reduce((c1, c2) => c1 + "\n" + c2) + "\n"
+  + {
+    if matchActionCases.size > 0 then
+      matchActionCases.reduce((c1, c2) => c1 + "\n" + c2) + "\n"
+    else
+      ""
+  }
   + "    case \"*\" => \"*\"\n"
 }
 
