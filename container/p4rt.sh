@@ -7,7 +7,7 @@
 #
 #   ./p4rt.sh up        start bmv2 on localhost:9559 (waits until it answers)
 #   ./p4rt.sh down       stop it
-#   ./p4rt.sh gen        regenerate the p4info fixture with current p4c
+#   ./p4rt.sh gen        regenerate the p4info fixtures with current p4c
 #   ./p4rt.sh gen-types  regenerate committed Scala types (all p4info fixtures)
 #   ./p4rt.sh gen-vm     ...with the p4c the mininet VM ships (1.2.4.x)
 #   ./p4rt.sh test       up + run Bmv2WireSuite against it
