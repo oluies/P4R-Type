@@ -23,12 +23,20 @@ import typegen.generate
   * compile. Both are now guarded, so the emitted `ActionName`/`TableAction`
   * degrade to just their `"*"` arms.
   *
-  * The proof that the output actually compiles is `counter_only.scala`: it is the
-  * committed generated source, sits under src/test/scala, and so is compiled by
-  * this module exactly as `quackmpp_exchange.scala` and `matchkinds.scala` are.
-  * If typegen emits non-compiling source for this fixture again, this suite fails
-  * to build. The drift check below then pins that the committed file is byte-for-
-  * byte what typegen emits today.
+  * Two mechanisms work together here, and both are needed:
+  *
+  *  - `counter_only.scala` is the committed generated source; it sits under
+  *    src/test/scala and is compiled by this module exactly as
+  *    `quackmpp_exchange.scala` and `matchkinds.scala` are. That compile is what
+  *    proves the *current* emission is valid Scala.
+  *  - The drift check below re-runs `generate` and asserts its output still equals
+  *    that committed file. That is what catches a *future* typegen change: the
+  *    committed .scala is static, so a regression that emits non-compiling source
+  *    leaves it compiling untouched — the signal comes from the drift test failing
+  *    at test time, not from the build.
+  *
+  * Neither alone suffices, so do not drop the drift check and lean on the
+  * committed file, nor vice versa.
   */
 class TypegenEmptyTablesSuite extends munit.FunSuite {
 

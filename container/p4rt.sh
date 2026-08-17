@@ -93,8 +93,9 @@ case "${1:-}" in
   gen)
     # Writes the two generated fixtures directly, one per .p4; that is what the
     # tests and CI read, so generating a second copy next to the .p4 only creates
-    # something to drift. (The sibling legacy_actionprofile.p4info.json is
-    # hand-written, has no .p4, and must not be regenerated here.) This same
+    # something to drift. (The sibling hand-written fixtures —
+    # legacy_actionprofile.p4info.json and counter_only.p4info.json — have no .p4
+    # and must not be regenerated here.) This same
     # (source, fixture) set is duplicated in ci.yml's PAIRS and compose.yaml's
     # p4c service; keep the three in sync when adding a .p4.
     #
@@ -128,6 +129,13 @@ case "${1:-}" in
         src/test/resources/matchkinds.p4info.json matchkinds \
         src/test/scala/matchkinds.scala" )
     echo "regenerated P4R-Type/src/test/scala/matchkinds.scala"
+    # counter_only is the table-less case (a hand-written p4info, no .p4, so `gen`
+    # above does not touch it — but its committed types ARE drift-checked, and the
+    # drift failure tells you to run this command, so it must refresh here too).
+    ( cd "$PROJ" && sbt -batch "runMain typegen.parseP4info \
+        src/test/resources/counter_only.p4info.json counteronly \
+        src/test/scala/counter_only.scala" )
+    echo "regenerated P4R-Type/src/test/scala/counter_only.scala"
     ;;
 
   gen-vm)
