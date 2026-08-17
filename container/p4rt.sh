@@ -7,8 +7,8 @@
 #
 #   ./p4rt.sh up        start bmv2 on localhost:9559 (waits until it answers)
 #   ./p4rt.sh down       stop it
-#   ./p4rt.sh gen        regenerate the p4info fixture with current p4c
-#   ./p4rt.sh gen-types  regenerate the committed Scala types from that fixture
+#   ./p4rt.sh gen        regenerate the p4info fixtures with current p4c
+#   ./p4rt.sh gen-types  regenerate committed Scala types (all p4info fixtures)
 #   ./p4rt.sh gen-vm     ...with the p4c the mininet VM ships (1.2.4.x)
 #   ./p4rt.sh test       up + run Bmv2WireSuite against it
 #   ./p4rt.sh pipeline-test  up + push a pipeline + insert/read a table entry
@@ -25,7 +25,8 @@ BMV2_IMAGE="p4lang/behavioral-model:latest"
 # `gen` reproduces them byte-for-byte and CI (which pins the same tag) stays
 # green. (`gen-types` is unaffected by this pin: it runs sbt on the host and
 # regenerates the Scala types from the already-committed fixtures, touching no
-# container.) The same tag is pinned in compose.yaml; move all three together.
+# container.) The same tag is pinned in compose.yaml and
+# .github/workflows/ci.yml; move all three together.
 # `latest` was here until 2026-07-21, when it shipped a build whose
 # p4c-bm2-ss could not load libboost_iostreams.so.1.83.0 — a fixture check must
 # not ride a moving tag. To re-check against a newer p4c, bump this deliberately
@@ -92,8 +93,9 @@ case "${1:-}" in
   gen)
     # Writes the two generated fixtures directly, one per .p4; that is what the
     # tests and CI read, so generating a second copy next to the .p4 only creates
-    # something to drift. (The sibling legacy_actionprofile.p4info.json is
-    # hand-written, has no .p4, and must not be regenerated here.) This same
+    # something to drift. (The sibling hand-written fixtures —
+    # legacy_actionprofile.p4info.json and counter_only.p4info.json — have no .p4
+    # and must not be regenerated here.) This same
     # (source, fixture) set is duplicated in ci.yml's PAIRS and compose.yaml's
     # p4c service; keep the three in sync when adding a .p4.
     #
@@ -127,6 +129,13 @@ case "${1:-}" in
         src/test/resources/matchkinds.p4info.json matchkinds \
         src/test/scala/matchkinds.scala" )
     echo "regenerated P4R-Type/src/test/scala/matchkinds.scala"
+    # counter_only is the table-less case (a hand-written p4info, no .p4, so `gen`
+    # above does not touch it — but its committed types ARE drift-checked, and the
+    # drift failure tells you to run this command, so it must refresh here too).
+    ( cd "$PROJ" && sbt -batch "runMain typegen.parseP4info \
+        src/test/resources/counter_only.p4info.json counteronly \
+        src/test/scala/counter_only.scala" )
+    echo "regenerated P4R-Type/src/test/scala/counter_only.scala"
     ;;
 
   gen-vm)

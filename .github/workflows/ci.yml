@@ -69,7 +69,8 @@ jobs:
   # below) with real p4c and fails if the emitted p4info differs from the
   # committed copy. Not every committed .p4 — vm/files/ has five that are VM
   # dataplanes with no fixture — and not every committed p4info: the hand-written
-  # legacy_actionprofile.p4info.json has no .p4 and must not be regenerated.
+  # fixtures legacy_actionprofile.p4info.json and counter_only.p4info.json have no
+  # .p4 and must not be regenerated.
   #
   # Note what that does and does not cover, now that IMAGE is pinned to the
   # fixtures' own p4c (see the rationale on IMAGE below). It catches a fixture
