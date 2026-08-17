@@ -1,0 +1,18 @@
+{
+  "pkgInfo": {
+    "arch": "v1model"
+  },
+  "counters": [
+    {
+      "preamble": {
+        "id": 318731500,
+        "name": "MyIngress.port_counter",
+        "alias": "port_counter"
+      },
+      "spec": {
+        "unit": "BOTH"
+      },
+      "size": "512"
+    }
+  ]
+}
