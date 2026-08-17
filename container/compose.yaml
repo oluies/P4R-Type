@@ -53,10 +53,13 @@ services:
   #
   # It regenerates exactly the two *generated* fixtures —
   # quackmpp_exchange.p4info.json and matchkinds.p4info.json — each from its .p4.
-  # NOTE the sibling src/test/resources/legacy_actionprofile.p4info.json is NOT
-  # in this set: it is hand-written, has no .p4, and encodes a pre-v1.4.0 shape
-  # modern p4c cannot emit (QuackMppTypegenSuite reads it to assert rejection).
-  # Regenerating it would destroy that test — do not add it here.
+  # NOTE this p4c set is only the p4infos that HAVE a .p4 here. Any committed
+  # p4info with no sibling .p4 is hand-written and must NOT be added —
+  # regenerating it would overwrite hand-authored content. The rule governs, not
+  # the list, so a new hand-written fixture needs no edit here. Two exist today:
+  # legacy_actionprofile.p4info.json (a pre-v1.4.0 shape modern p4c cannot emit;
+  # QuackMppTypegenSuite reads it to assert rejection), and
+  # counter_only.p4info.json (the table-less case, TypegenEmptyTablesSuite).
   #
   # This (source, fixture) list is duplicated in ci.yml's PAIRS and in
   # `p4rt.sh gen`; adding a third .p4 means editing all three, and nothing
