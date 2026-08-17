@@ -2,7 +2,7 @@ val scala3Version = "3.8.4"
 
 val grpcVersion   = "1.82.2"
 val protobufVersion = "4.35.1"   // must match what scalapb-runtime pulls
-val munitVersion  = "1.3.4"
+val munitVersion  = "1.3.5"
 
 // --- Release signing, driven entirely by environment ------------------------
 // Set only in the release workflow (from repo secrets). Unset everywhere else,
