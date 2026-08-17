@@ -161,9 +161,17 @@ def genActions(actions : Seq[P4InfoAction]) : Either[String, String] = for {
 }
 
 def genActionName(actions : Seq[P4InfoAction]) : Either[String, String] = for {
-  actions <- genActions(actions)
+  actionsUnion <- genActions(actions)
 } yield {
-  "type ActionName = " + actions + " | \"*\"\n"
+  // genActions returns "" for a p4info with no actions (a counter-only program
+  // is a real p4c output). Without this guard the emission would be
+  // `type ActionName =  | "*"` — a union with an empty left operand, which is a
+  // Scala 3 syntax error, so `generate` would hand the downstream build a Right
+  // whose source does not compile. With no actions the type is just "*".
+  if actionsUnion.isEmpty then
+    "type ActionName = \"*\"\n"
+  else
+    "type ActionName = " + actionsUnion + " | \"*\"\n"
 }
 
 def genTableAction(tables : Seq[Table], actions : Seq[P4InfoAction]) : Either[String, String] = for {

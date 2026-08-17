@@ -5,7 +5,8 @@ package p4rtype.consumertest
 
 import typegen.generate
 
-/** Regression: typegen must not crash on a table-less p4info.
+/** Regression: typegen must produce compilable output for a table-less p4info,
+  * not just avoid crashing on it.
   *
   * A p4info with no tables is a real p4c output: compile a program whose only
   * P4Runtime object is a counter (e.g. nsg-ethz/p4-learning's
@@ -13,22 +14,25 @@ import typegen.generate
   * typeInfo}` with `tables` and `actions` absent. `counter_only.p4info.json` is
   * the minimal form of that: one counter, no tables, no actions.
   *
-  * This started as a repro. `genTableAction` reduced `matchActionCases` with no
-  * empty guard, while its three siblings — genTableMatchFields, genActionName,
-  * genActionParams — all guard `if size > 0`. With zero tables the sequence was
-  * empty and `.reduce` threw `UnsupportedOperationException: empty.reduceLeft`
-  * before any `Either` was produced, so the exception escaped `generate` entirely
-  * instead of surfacing as a `Left`. The guard is now in place; with no tables the
-  * generated `TableAction` degrades to just the `case "*"` arm, and `generate`
-  * returns a `Right`.
+  * This started as a crash — `genTableAction` reduced an empty `matchActionCases`
+  * and threw `UnsupportedOperationException: empty.reduceLeft` out of the
+  * Either-typed API. Guarding that reduce stopped the throw but was not enough:
+  * with no actions `genActionName` still emitted `type ActionName =  | "*"`, a
+  * union with an empty left operand and thus a Scala 3 syntax error — so
+  * `generate` returned a `Right` whose source the downstream build could not
+  * compile. Both are now guarded, so the emitted `ActionName`/`TableAction`
+  * degrade to just their `"*"` arms.
   *
-  * The contract this pins is minimal and design-neutral: `generate` must return —
-  * `Left` or `Right`, either is fine — and must never let an exception escape its
-  * `Either`.
+  * The proof that the output actually compiles is `counter_only.scala`: it is the
+  * committed generated source, sits under src/test/scala, and so is compiled by
+  * this module exactly as `quackmpp_exchange.scala` and `matchkinds.scala` are.
+  * If typegen emits non-compiling source for this fixture again, this suite fails
+  * to build. The drift check below then pins that the committed file is byte-for-
+  * byte what typegen emits today.
   */
 class TypegenEmptyTablesSuite extends munit.FunSuite {
 
-  test("a table-less p4info returns via Either, never throws") {
+  test("a table-less p4info yields a Right (never throws)") {
     val json = scala.io.Source.fromResource("counter_only.p4info.json").mkString
 
     val result =
@@ -40,11 +44,12 @@ class TypegenEmptyTablesSuite extends munit.FunSuite {
             s"API must not leak exceptions on a table-less p4info"
           )
 
-    // Reaching here means it returned rather than threw. Either outcome is
-    // acceptable; the bug is solely the escaping exception.
-    assert(
-      result.isLeft || result.isRight,
-      s"unreachable unless generate returned a non-Either: $result"
+    assert(result.isRight, s"expected a Right for a table-less p4info, got: $result")
+  }
+
+  test("typegen output matches the committed counter_only.scala") {
+    TypegenDrift.check(
+      "counter_only.p4info.json", "src/test/scala/counter_only.scala", "counteronly"
     )
   }
 }
