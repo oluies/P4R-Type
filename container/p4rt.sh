@@ -25,7 +25,8 @@ BMV2_IMAGE="p4lang/behavioral-model:latest"
 # `gen` reproduces them byte-for-byte and CI (which pins the same tag) stays
 # green. (`gen-types` is unaffected by this pin: it runs sbt on the host and
 # regenerates the Scala types from the already-committed fixtures, touching no
-# container.) The same tag is pinned in compose.yaml; move all three together.
+# container.) The same tag is pinned in compose.yaml and
+# .github/workflows/ci.yml; move all three together.
 # `latest` was here until 2026-07-21, when it shipped a build whose
 # p4c-bm2-ss could not load libboost_iostreams.so.1.83.0 — a fixture check must
 # not ride a moving tag. To re-check against a newer p4c, bump this deliberately

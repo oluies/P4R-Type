@@ -42,9 +42,9 @@ services:
   #
   # PINNED to the same tag as ci.yml and p4rt.sh. The image pin lives in THREE
   # files — this one, .github/workflows/ci.yml, and container/p4rt.sh — and they
-  # must move together. (The literal `1.2.5.15` also appears as prose in
-  # ARCHITECTURE.md and UPGRADE.md, describing the container's p4c; those go stale
-  # on a bump too, but they are descriptions, not the pin.) This service writes the committed
+  # must move together. (The pinned tag also appears as prose in ARCHITECTURE.md
+  # and UPGRADE.md, describing the container's p4c; they go stale on a bump too
+  # but are descriptions, not the pin.) This service writes the committed
   # fixtures *directly*, so on a different p4c it silently replaces them with
   # output from a version CI does not use, and the pinned CI job then fails with
   # a diff whose real cause is the regeneration tool, not the .p4. It was left on
