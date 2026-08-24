@@ -5,4 +5,4 @@
 // and has no sbt 2 build, and sbt 2.0.3 does not yet ship the native
 // `sonaUpload`/`localStaging` commands its replacement recipe uses. The upload
 // step is therefore out-of-band — see PUBLISHING.md.
-addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.3.1")
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.3.2")
