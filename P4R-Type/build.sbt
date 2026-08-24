@@ -1,6 +1,6 @@
 val scala3Version = "3.8.4"
 
-val grpcVersion   = "1.83.0"
+val grpcVersion   = "1.83.1"
 val protobufVersion = "4.35.1"   // must match what scalapb-runtime pulls
 val munitVersion  = "1.3.5"
 
