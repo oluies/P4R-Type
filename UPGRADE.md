@@ -139,8 +139,8 @@ Steward's own gated PR, which is the setup working exactly as intended.
 
 The fragility that justified the escape hatch is gone. What is left is two
 pre-release *versions* rather than an unresolvable *conflict*: no override, no
-eviction warning, no cross-alpha gamble — and 12/12 tests green on a cold JDK 25
-build.
+eviction warning, no cross-alpha gamble — and the full suite green on a cold
+JDK 25 build.
 
 **sbt 1.12.13 remains a clean fallback** and is worth taking if the RC/alpha
 versions are themselves a policy problem (e.g. for a published artifact others
@@ -308,11 +308,14 @@ other**, and if selectors are in play they must both be ≥ v1.4.0.
 
 ### Warning noise
 
-A cold build (action cache cleared — see §9) emits **856 warnings, 799 of them
-from ScalaPB-generated code**: ScalaPB 1.0.0-alpha.6's codegen still emits
-`_` as a type wildcard (560) and `private[this]` (272), both of which Scala 3.8
-warns about. The remaining 57 are in `src/main/scala/examples` (32) and
-`src/main/scala/api` (25). All benign; none are errors. If the noise becomes a
+A cold build (action cache cleared — see §9) emits **904 warnings, 834 of them
+from ScalaPB-generated code** under `src_managed`: ScalaPB 1.0.0-alpha.6's
+codegen still emits `_` as a type wildcard (546) and `private[this]` (284), both
+of which current Scala 3 deprecates. The remaining 70 are hand-written —
+`src/main/scala/api` (31), `examples/src/main/scala` (27) and `src/test/scala`
+(12) — and are mostly the same `_` wildcard deprecation (47, so it is not purely
+a codegen habit) plus pattern-match exhaustivity warnings in the examples (14).
+All benign; none are errors. If the noise becomes a
 problem, extend the existing `-Wconf` rule to silence `src_managed` rather than
 editing generated output.
 
