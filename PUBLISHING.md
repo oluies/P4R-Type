@@ -30,8 +30,8 @@ build**, and the reasons are worth recording so nobody re-discovers them:
   publishes only `_2.12_1.0` (sbt 1), not `_sbt2_3`.
 * `sbt-ci-release` likewise has no sbt 2 build.
 * The sbt 2.x Central recipe uses native `sonaUpload` / `localStaging` commands,
-  but those are **not in sbt 2.0.3** — which is the *latest* sbt (there is no
-  newer 2.x to move to). `help sonaUpload` finds nothing.
+  but those are **not in sbt 2.0.9** — the latest *stable* sbt (2.1.0 is still at
+  milestone). Re-checked on 2.0.9: `help sonaUpload` finds nothing.
 
 So the working path is: **sbt-pgp signs into a local staging tree, and the
 workflow uploads that tree as a bundle to the Central Portal Publisher API.**
