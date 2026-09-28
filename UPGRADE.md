@@ -4,8 +4,9 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 (the OOPSLA artifact) is being brought up to date to serve as the control-plane
 binding library for **QuackMPP**.
 
-Verified cold (action cache cleared) on **sbt 2.0.3 / Scala 3.8.4**; CI builds
-both **JDK 25 and 26**. `compile` and `testFull` green, 23/23 tests passing.
+Verified cold (action cache cleared) on **sbt 2.0.9 / Scala 3.9.0**; CI builds
+both **JDK 25 and 26**. `compile` and `testFull` green, 25/25 tests passing
+(2 bmv2 suites ignored without a live switch).
 
 ---
 
@@ -22,8 +23,8 @@ So the upgrade was not optional — there was no working baseline to regress aga
 
 | Component | Before | After |
 | --- | --- | --- |
-| sbt | 1.7.1 | **2.0.3** |
-| Scala | 3.1.3 | **3.8.4** (Next track) |
+| sbt | 1.7.1 | **2.0.9** |
+| Scala | 3.1.3 | **3.9.0** (Next track) |
 | JDK | unpinned (broken on 25/26) | **25 LTS or 26** (CI builds both) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
 | ScalaPB compilerplugin | 0.11.11 | **1.0.0-alpha.6** |
@@ -131,7 +132,7 @@ Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
 
 Re-checked on Maven at the time of writing: nothing newer exists on either
 (`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
-1.0.0-alpha.6). sbt is now 2.0.3 — released mid-upgrade, and landed via Scala
+1.0.0-alpha.6). sbt is now 2.0.9 — bumped post-upgrade, and landed via Scala
 Steward's own gated PR, which is the setup working exactly as intended.
 
 ### Recommendation: stay on sbt 2.x
