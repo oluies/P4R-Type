@@ -24,7 +24,7 @@ jobs:
         # the only thing that notices a new JDK breaking the build.
         #
         # There is no Scala axis: scalaVersion is a single val, and this project
-        # tracks Scala Next, so the pin *is* the latest (3.8.4 today). When 3.9
+        # tracks Scala Next, so the pin *is* the latest (3.9.0 today). When 3.10
         # lands, Steward offers it as a CI-gated PR — a reviewable change rather
         # than a permanently-red canary job.
         java: ['25', '26']

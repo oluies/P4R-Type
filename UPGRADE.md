@@ -4,8 +4,9 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 (the OOPSLA artifact) is being brought up to date to serve as the control-plane
 binding library for **QuackMPP**.
 
-Verified cold (action cache cleared) on **sbt 2.0.3 / Scala 3.8.4**; CI builds
-both **JDK 25 and 26**. `compile` and `testFull` green, 23/23 tests passing.
+Verified cold (action cache cleared) on **sbt 2.0.9 / Scala 3.9.0**; CI builds
+both **JDK 25 and 26**. `compile` and `testFull` green, 25/25 tests passing
+(2 bmv2 suites ignored without a live switch).
 
 ---
 
@@ -22,8 +23,8 @@ So the upgrade was not optional — there was no working baseline to regress aga
 
 | Component | Before | After |
 | --- | --- | --- |
-| sbt | 1.7.1 | **2.0.3** |
-| Scala | 3.1.3 | **3.8.4** (Next track) |
+| sbt | 1.7.1 | **2.0.9** |
+| Scala | 3.1.3 | **3.9.0** (Next track) |
 | JDK | unpinned (broken on 25/26) | **25 LTS or 26** (CI builds both) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
 | ScalaPB compilerplugin | 0.11.11 | **1.0.0-alpha.6** |
@@ -131,15 +132,15 @@ Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
 
 Re-checked on Maven at the time of writing: nothing newer exists on either
 (`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
-1.0.0-alpha.6). sbt is now 2.0.3 — released mid-upgrade, and landed via Scala
+1.0.0-alpha.6). sbt is now 2.0.9 — bumped post-upgrade, and landed via Scala
 Steward's own gated PR, which is the setup working exactly as intended.
 
 ### Recommendation: stay on sbt 2.x
 
 The fragility that justified the escape hatch is gone. What is left is two
 pre-release *versions* rather than an unresolvable *conflict*: no override, no
-eviction warning, no cross-alpha gamble — and 12/12 tests green on a cold JDK 25
-build.
+eviction warning, no cross-alpha gamble — and the full suite green on a cold
+JDK 25 build.
 
 **sbt 1.12.13 remains a clean fallback** and is worth taking if the RC/alpha
 versions are themselves a policy problem (e.g. for a published artifact others
@@ -307,11 +308,14 @@ other**, and if selectors are in play they must both be ≥ v1.4.0.
 
 ### Warning noise
 
-A cold build (action cache cleared — see §9) emits **856 warnings, 799 of them
-from ScalaPB-generated code**: ScalaPB 1.0.0-alpha.6's codegen still emits
-`_` as a type wildcard (560) and `private[this]` (272), both of which Scala 3.8
-warns about. The remaining 57 are in `src/main/scala/examples` (32) and
-`src/main/scala/api` (25). All benign; none are errors. If the noise becomes a
+A cold build (action cache cleared — see §9) emits **904 warnings, 834 of them
+from ScalaPB-generated code** under `src_managed`: ScalaPB 1.0.0-alpha.6's
+codegen still emits `_` as a type wildcard (546) and `private[this]` (284), both
+of which current Scala 3 deprecates. The remaining 70 are hand-written —
+`src/main/scala/api` (31), `examples/src/main/scala` (27) and `src/test/scala`
+(12) — and are mostly the same `_` wildcard deprecation (47, so it is not purely
+a codegen habit) plus pattern-match exhaustivity warnings in the examples (14).
+All benign; none are errors. If the noise becomes a
 problem, extend the existing `-Wconf` rule to silence `src_managed` rather than
 editing generated output.
 
