@@ -175,9 +175,19 @@ jobs:
 
           # Central requires a signature and both checksums beside every
           # artifact, and rejects the whole deployment if one is missing.
+          #
+          # Checksums are NOT demanded for the .asc files themselves. Central's
+          # requirements are explicit that they are not wanted: "`.asc` files
+          # don't need checksum files, nor do checksum files need `.asc`
+          # signature files." sbt 2.0.3 happened to emit `.asc.md5`/`.asc.sha1`
+          # anyway, so v0.1.0 shipped with them and this loop grew to demand
+          # them — but a newer sbt stopped emitting them, and the first v0.2.0
+          # attempt died here with `missing or empty ...jar.asc.md5` on a
+          # bundle Central would have accepted. Not sbt-pgp's doing: a dry run
+          # pinned back to sbt-pgp 2.3.1 failed identically.
           for base in .jar -sources.jar -javadoc.jar .pom; do
             f="$DIR/p4rt-scala_3-$VERSION$base"
-            for suffix in "" .asc .md5 .sha1 .asc.md5 .asc.sha1; do
+            for suffix in "" .asc .md5 .sha1; do
               test -s "$f$suffix" || { echo "::error::missing or empty $f$suffix"; exit 1; }
             done
             # Existence is not validity: an unsigned or wrongly-signed artifact
