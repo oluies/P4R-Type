@@ -1,4 +1,4 @@
-val scala3Version = "3.8.4"
+val scala3Version = "3.9.0"
 
 val grpcVersion   = "1.83.0"
 val protobufVersion = "4.36.2"   // must match what scalapb-runtime pulls
@@ -41,7 +41,7 @@ lazy val root = project
     //
     // NOTE on mechanics: sbt-sonatype is deprecated and has no sbt 2 build, and
     // the `sonaUpload`/`localStaging` commands in the sbt 2.x Central recipe are
-    // not present in sbt 2.0.3 (the latest sbt). So the release path here is
+    // not present in sbt 2.0.9 (the latest stable sbt). So the release path here is
     // sbt-pgp `publishSigned` into `target/central-staging`, then a bundle upload
     // to the Central Portal — see PUBLISHING.md. This block is only the metadata;
     // it changes nothing about compile/test/CI.
