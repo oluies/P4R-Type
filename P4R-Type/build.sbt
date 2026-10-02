@@ -1,8 +1,8 @@
 val scala3Version = "3.9.0"
 
-val grpcVersion   = "1.83.0"
+val grpcVersion   = "1.83.1"
 val protobufVersion = "4.36.2"   // must match what scalapb-runtime pulls
-val munitVersion  = "1.3.5"
+val munitVersion  = "1.3.6"
 
 // --- Release signing, driven entirely by environment ------------------------
 // Set only in the release workflow (from repo secrets). Unset everywhere else,
@@ -103,6 +103,16 @@ lazy val root = project
       "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
       "com.google.protobuf"   % "protobuf-java-util"   % protobufVersion,
       "io.grpc"               % "grpc-netty"           % grpcVersion,
+      // grpc-protobuf and grpc-stub arrive transitively through
+      // scalapb-runtime-grpc, which pins them at 1.82.1 — so without these two
+      // lines `grpcVersion` moves grpc-netty/api/core/util and leaves those
+      // two behind, and the classpath carries two grpc minors at once. They
+      // are declared here only to put every io.grpc artifact on one knob;
+      // neither is imported directly. Safe against the protobuf pin: both want
+      // protobuf-java 3.25.9, far below this build's 4.36.2, so 4.36.2 still
+      // wins the eviction.
+      "io.grpc"               % "grpc-protobuf"        % grpcVersion,
+      "io.grpc"               % "grpc-stub"            % grpcVersion,
       "org.scalameta"        %% "munit"                % munitVersion % Test
     )
   )
