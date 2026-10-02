@@ -4,24 +4,24 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/p4rt-scala_3?label=maven%20central)](https://central.sonatype.com/artifact/io.github.oluies/p4rt-scala_3)
 
 **Published to Maven Central** — consumers resolve it with no authentication.
-Latest version is on the badge above; `0.1.0` is the first release. In sbt:
+Latest version is on the badge above; `0.2.0` is current. In sbt:
 
 ```scala
-libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.1.0"
+libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.2.0"
 ```
 
 In Mill (0.12+/1.x — `mvn`/`mvnDeps`, renamed from `ivy`/`ivyDeps`):
 
 ```scala
-def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.0")
 ```
 
 > **Minimum consumer Scala version.** TASTy is not forward compatible, so the
 > compiler that builds this library sets a floor for the ones that can consume
-> it. `0.1.0` was built with Scala 3.8.4 and reads on **3.8.4 or newer**; `main`
-> now builds with 3.9.0, so the next release will read only on **3.9.0 or
-> newer**. This library tracks Scala Next rather than the 3.3 LTS, so that floor
-> moves with each bump.
+> it. `0.2.0` is built with Scala 3.9.0 and needs **3.9.0 or newer**; the older
+> `0.1.0` was built with 3.8.4 and still reads on **3.8.4 or newer**. That is
+> why 0.1.0 → 0.2.0 is a minor bump and not a patch. This library tracks Scala
+> Next rather than the 3.3 LTS, so the floor moves with each bump.
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
