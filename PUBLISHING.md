@@ -5,9 +5,9 @@ with no authentication:
 
 ```scala
 // Mill 0.12+/1.x
-mvn"io.github.oluies::p4rt-scala:0.1.0"
+mvn"io.github.oluies::p4rt-scala:0.2.0"
 // Mill 0.11 and earlier
-ivy"io.github.oluies::p4rt-scala:0.1.0"
+ivy"io.github.oluies::p4rt-scala:0.2.0"
 ```
 
 Releases are cut by **CI, on a tag** — `.github/workflows/release.yml`. Nothing
@@ -18,7 +18,8 @@ disagree with the tag because it *is* the tag (`v0.1.0` → `RELEASE_VERSION=0.1
 consumed by `version` in `build.sbt`). Between releases `main` stays on the next
 `-SNAPSHOT`; no release ever edits a tracked file.
 
-**Released:** `0.1.0`, on 2026-07-22, from tag `v0.1.0`.
+**Released:** `0.2.0`, on 2026-10-01, from tag `v0.2.0`. Before that, `0.1.0` on
+2026-07-22 from `v0.1.0`.
 
 ## Why the setup is non-standard
 
@@ -102,10 +103,11 @@ upload.
 ### 2. Tag
 
 Set the version once so no command names a number that has already shipped
-(`0.1.0` is released and immutable — the next is `0.1.1`):
+(`0.1.0` and `0.2.0` are released and immutable — the next patch is `0.2.1`,
+and a change that moves the consumer Scala floor again is a minor, `0.3.0`):
 
 ```bash
-VERSION=0.1.1
+VERSION=0.2.1
 git tag "v$VERSION" && git push origin "v$VERSION"
 ```
 
@@ -133,7 +135,7 @@ Two kinds of literal version to move after a release; both are easy to leave
 behind, and a consumer reads the second kind:
 
 1. **The snapshot fallback** in `build.sbt` — move it to the next `-SNAPSHOT`
-   (`0.1.1-SNAPSHOT` now that `0.1.0` is out) so local and CI builds stop
+   (`0.2.1-SNAPSHOT` now that `0.2.0` is out) so local and CI builds stop
    claiming a number that is already published and immutable. The released
    version comes from the tag regardless, so this only affects non-release
    builds — but a snapshot sharing a number with a released artifact is exactly
@@ -171,7 +173,30 @@ position rather than from the build that produced it: every artifact and its
 published `.sha1` matches the downloaded jar, and both the jar and POM
 signatures verify against the key fetched fresh from `keyserver.ubuntu.com` —
 not from a local keyring, which would only have proved the key signs its own
-output.
+output. `0.2.0` followed on the `v0.2.0` tag and is live the same way.
+
+**The gate outlived its own assumption, and it cost a tag.** The first `v0.2.0`
+attempt failed at *Verify the staged bundle* with `missing or empty
+…p4rt-scala_3-0.2.0.jar.asc.md5`. The bundle was fine; the check was wrong.
+[Central's requirements](https://central.sonatype.org/publish/requirements/)
+say plainly that "`.asc` files don't need checksum files" — but sbt 2.0.3
+emitted them anyway, so `0.1.0` shipped with them and this loop grew to demand
+them. A newer sbt stopped, and the gate started rejecting a bundle Central
+would have taken. Confirmed from the other side afterwards: `0.2.0` published
+with `.jar.asc.md5` returning 404 on `repo1.maven.org`.
+
+Two things are worth keeping from that:
+
+* **It was not sbt-pgp.** 2.3.2's notes advertise *"Removes direct reference to
+  Ivy"*, which is exactly the plausible cause, and it is the wrong one — a dry
+  run pinned back to 2.3.1 failed identically. The change is in sbt itself,
+  somewhere in 2.0.3 → 2.0.9. Pinning the obvious suspect would have wasted a
+  second tag.
+* **The release path is only exercised at release time.** sbt moved under it
+  across four versions with nothing noticing, because CI runs compile and test
+  and never `publishSigned`. A dry run gated on changes to `publish.sbt` or
+  `release.yml`, or simply run periodically, would have caught this before a
+  tag was spent. Nothing does that yet.
 
 **A trap worth naming:** the staging tree is **not** at `target/central-staging`.
 sbt 2 resolves `target.value` per project, so it lands at

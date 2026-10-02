@@ -393,14 +393,14 @@ Rationale:
 
 > **Superseded, and this is the good outcome.** This whole section worked out how
 > QuackMPP would resolve a `publishLocal` snapshot from `~/.ivy2/local`. That is no
-> longer necessary: `0.1.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
+> longer necessary: `0.2.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
 > which coursier queries by default with no authentication and no local publish step
 > — so the consumer just adds the `mvnDeps` line at the end of this section. It also
 > removes what the local path forced on the consumer: a `.p4rt-version` marker file,
 > a build-from-source job, its cache and pin guard. The walkthrough below is kept
 > because the jar-contents audit and the resolver reasoning still apply, and
 > `publishLocal` is still how you test an unreleased snapshot — but it now writes
-> `0.1.1-SNAPSHOT`, not the `0.1.0-SNAPSHOT` recorded below.
+> `0.2.1-SNAPSHOT`, not the `0.1.0-SNAPSHOT` recorded below.
 
 `publishLocal` from `P4R-Type/`:
 
@@ -409,7 +409,7 @@ cd P4R-Type && sbt -batch publishLocal
 ```
 
 Verified at the time — this publishes to `~/.ivy2/local` (the fallback is now
-`0.1.1-SNAPSHOT`, so the coordinate reads `…;0.1.1-SNAPSHOT` today):
+`0.2.1-SNAPSHOT`, so the coordinate reads `…;0.2.1-SNAPSHOT` today):
 
 ```
 io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT
@@ -444,7 +444,7 @@ Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"
 so QuackMPP depends on it via:
 
 ```scala
-def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.1.0")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.0")
 ```
 
 On the resolver question: Mill resolves through coursier, and coursier's documented
