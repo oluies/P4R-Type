@@ -106,11 +106,17 @@ lazy val root = project
       // grpc-protobuf and grpc-stub arrive transitively through
       // scalapb-runtime-grpc, which pins them at 1.82.1 — so without these two
       // lines `grpcVersion` moves grpc-netty/api/core/util and leaves those
-      // two behind, and the classpath carries two grpc minors at once. They
-      // are declared here only to put every io.grpc artifact on one knob;
-      // neither is imported directly. Safe against the protobuf pin: both want
-      // protobuf-java 3.25.9, far below this build's 4.36.2, so 4.36.2 still
-      // wins the eviction.
+      // two behind, and the classpath carries two grpc minors at once.
+      //
+      // The two are not equivalent, though. grpc-stub is used directly —
+      // `io.grpc.stub.StreamObserver` in api/p4rtype.scala and
+      // typegen/typegen.scala — so declaring it also fixes an undeclared
+      // direct dependency that only resolved by accident, through ScalaPB.
+      // grpc-protobuf really is here only to keep every io.grpc artifact on one
+      // knob; nothing imports it.
+      //
+      // Safe against the protobuf pin: both want protobuf-java 3.25.9, far
+      // below this build's 4.36.2, so 4.36.2 still wins the eviction.
       "io.grpc"               % "grpc-protobuf"        % grpcVersion,
       "io.grpc"               % "grpc-stub"            % grpcVersion,
       "org.scalameta"        %% "munit"                % munitVersion % Test

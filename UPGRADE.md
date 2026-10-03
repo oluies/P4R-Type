@@ -309,15 +309,15 @@ other**, and if selectors are in play they must both be ≥ v1.4.0.
 ### Warning noise
 
 A cold build (action cache cleared — see §9) emits **904 warnings, 834 of them
-from ScalaPB-generated code** under `src_managed`: ScalaPB 1.0.0-alpha.6's
-codegen still emits `_` as a type wildcard (546) and `private[this]` (284), both
-of which current Scala 3 deprecates. The remaining 70 are hand-written —
-`src/main/scala/api` (31), `examples/src/main/scala` (27) and `src/test/scala`
-(12) — and are mostly the same `_` wildcard deprecation (47, so it is not purely
-a codegen habit) plus pattern-match exhaustivity warnings in the examples (14).
-All benign; none are errors. If the noise becomes a
-problem, extend the existing `-Wconf` rule to silence `src_managed` rather than
-editing generated output.
+from ScalaPB-generated code** under `src_managed`. Those are chiefly, but not
+only, two deprecations ScalaPB 1.0.0-alpha.6's codegen still emits: `_` as a
+type wildcard (546) and `private[this]` (284), with the remaining handful
+scattered. The other 70 warnings are hand-written — `src/main/scala/api` (31),
+`examples/src/main/scala` (27) and `src/test/scala` (12) — and are mostly the
+same `_` wildcard deprecation (47, so it is not purely a codegen habit) plus
+pattern-match exhaustivity warnings in the examples (14). All benign; none are
+errors. If the noise becomes a problem, extend the existing `-Wconf` rule to
+silence `src_managed` rather than editing generated output.
 
 ## 6. typegen verified on a p4c v1model p4info
 
