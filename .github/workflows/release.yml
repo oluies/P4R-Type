@@ -194,6 +194,23 @@ jobs:
             # produces a file of plausible size that Central rejects on upload.
             gpg --verify "$f.asc" "$f" 2>&1 | grep -q "Good signature" \
               || { echo "::error::signature does not verify for $f"; exit 1; }
+
+            # Same principle for the checksums, which `test -s` above cannot
+            # judge: a truncated or stale .md5/.sha1 is a plausible-looking file
+            # that Central rejects only after the upload. Maven checksum files
+            # are the bare hex digest with no filename, so compare digests
+            # directly.
+            for algo in md5 sha1; do
+              case $algo in
+                md5)  want=$(md5sum  "$f" | cut -d' ' -f1) ;;
+                sha1) want=$(sha1sum "$f" | cut -d' ' -f1) ;;
+              esac
+              got=$(tr -d '[:space:]' < "$f.$algo")
+              [ "$want" = "$got" ] || {
+                echo "::error::$algo mismatch for $f: file is $want, $f.$algo says $got"
+                exit 1
+              }
+            done
             echo "  ok  $(basename "$f")"
           done
 

@@ -131,7 +131,7 @@ build-from-source job on the QuackMPP side can be deleted.
 
 ### 5. Bump
 
-Two kinds of literal version to move after a release; both are easy to leave
+Three kinds of literal version to move after a release; all are easy to leave
 behind, and a consumer reads the second kind:
 
 1. **The snapshot fallback** in `build.sbt` — move it to the next `-SNAPSHOT`
@@ -146,6 +146,13 @@ behind, and a consumer reads the second kind:
    this file's header, and `UPGRADE.md` (the `mvnDeps` line). The Maven Central
    badge in `README.md` auto-updates; the prose examples do not. Bump these only
    when a release actually lands, not at the snapshot bump.
+
+3. **The next-version literals** in this file, which name a number nobody has
+   shipped yet rather than one that is out: §2's `VERSION=` and the same line in
+   *Releasing from a laptop instead* below. These are the easiest to miss,
+   because they read as correct right up until someone pastes one — and the
+   laptop path has no CI to catch a version that disagrees with the tag. A
+   release in 2026-10 moved §2 and left the laptop copy on `0.1.1`.
 
 ## What has actually been verified, and what has not
 
@@ -213,7 +220,7 @@ guardrails the workflow gives you for free have to be written out by hand here.
 
 ```bash
 cd P4R-Type
-VERSION=0.1.1
+VERSION=0.2.1
 
 # sbt 2's server outlives the shell that started it and keeps the environment it
 # was born with, so a server already running in this project would stage the old
