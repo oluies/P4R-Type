@@ -72,9 +72,20 @@ lazy val root = project
     // exits should not be sharing a JVM with the build tool on trust.
     Compile / run / fork := true,
 
-    // Silence warnings due to ScalaPB-generated code
     scalacOptions ++= Seq(
-      "-Wconf:cat=deprecation&msg=Marked as deprecated in proto file:silent"
+      // Silence warnings due to ScalaPB-generated code.
+      "-Wconf:cat=deprecation&msg=Marked as deprecated in proto file:silent",
+      // Makes the consumer JDK floor README states real rather than incidental.
+      // Scala 3 already targets JVM 17 by default, so this does not change the
+      // class-file version (61 either way) — what it adds is the *API filter*.
+      // Without it, scalac on the release JDK (25) emits 61 while linking
+      // against JDK 25's class library, so a post-17 JDK API would compile,
+      // ship, and fail at link time for a consumer on 17 — and CI, which
+      // builds only 25 and 26, would never notice. Verified to bite: with this
+      // flag, `Thread.ofVirtual()` (Java 21) fails to compile.
+      //
+      // Raise this in step with the floor documented in README, not silently.
+      "-release:17"
     ),
 
     // The P4Runtime + google .proto sources live in src/protobuf, not sbt-protoc's

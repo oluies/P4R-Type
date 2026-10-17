@@ -25,11 +25,13 @@ def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.0")
 > is why 0.1.0 → 0.2.0 is a minor bump and not a patch; this library tracks
 > Scala Next rather than the 3.3 LTS, so it moves again with each bump.
 >
-> The **JDK** floor is lower and does not move with it: every class in the
-> published `0.2.0` jar is class-file version 61, so **JDK 17 or newer** reads
-> it. Scala 3 targets JVM 17 by default and this build sets no
-> `-java-output-version`, so the JDK the release is *cut* on (25, per
-> `release.yml`) is not the JDK a consumer needs.
+> The **JDK** floor is lower and does not move with it: **JDK 17 or newer**.
+> The JDK a release is *cut* on (25, per `release.yml`) is not the JDK a
+> consumer needs. This is enforced rather than incidental — the build compiles
+> with `-release:17`, so a post-17 JDK API cannot slip into a published artifact
+> even though CI only ever runs on 25 and 26. Published `0.2.0` predates the
+> flag, but its class files are all version 61 and its sources use no post-17
+> API, so the floor holds for it too.
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
