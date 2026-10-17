@@ -21,10 +21,10 @@ parser on Scala 2.12, which cannot read Java 26 class files:
 
 So the upgrade was not optional — there was no working baseline to regress against.
 
-| Component | Before | After |
+| Component | Before | After the upgrade |
 | --- | --- | --- |
-| sbt | 1.7.1 | **2.0.10** |
-| Scala | 3.1.3 | **3.9.0** (Next track) |
+| sbt | 1.7.1 | **2.0.2** |
+| Scala | 3.1.3 | **3.8.4** (Next track) |
 | JDK | unpinned (broken on 25/26) | **25 LTS or 26** (CI builds both) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
 | ScalaPB compilerplugin | 0.11.11 | **1.0.0-alpha.6** |
@@ -39,6 +39,17 @@ So the upgrade was not optional — there was no working baseline to regress aga
 | munit | 0.7.29 | **1.3.4** |
 | sbt-bloop (`project/metals.sbt`) | 1.5.8, committed | **removed + gitignored** |
 | P4Runtime protos | ~v1.3-era | **v1.5.0** (see §5) |
+
+The right-hand column is what the upgrade itself landed on, not what the build
+uses today — this is a record, and it is deliberately frozen. Several of these
+have moved since via Scala Steward's gated PRs. **For current versions, read
+`P4R-Type/build.sbt`, `P4R-Type/project/` and this file's header**, which are
+the only places that cannot go stale because the build reads them.
+
+Keeping the column current was tried and does not work: it drifted into saying
+sbt 2.0.10 and Scala 3.9.0 while the other fourteen rows still read their
+original values, so the table meant two different things at once and no row
+told you which. Please do not bump it on a dependency update.
 
 `build.sbt` also declared `PB.targets`, `grpc-netty`, and `scalapb-runtime-grpc`
 twice each; the file has been deduplicated.
@@ -132,8 +143,9 @@ Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
 
 Re-checked on Maven at the time of writing: nothing newer exists on either
 (`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
-1.0.0-alpha.6). sbt is now 2.0.10 — bumped post-upgrade, and landed via Scala
-Steward's own gated PR, which is the setup working exactly as intended.
+1.0.0-alpha.6). sbt itself has moved several times since the upgrade, each one
+landing as a CI-gated Scala Steward PR — the setup working exactly as intended.
+The version it is on now is in `project/build.properties`, not here.
 
 ### Recommendation: stay on sbt 2.x
 
