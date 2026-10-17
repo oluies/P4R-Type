@@ -4,38 +4,39 @@
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/p4rt-scala_3?label=maven%20central)](https://central.sonatype.com/artifact/io.github.oluies/p4rt-scala_3)
 
 **Published to Maven Central** — consumers resolve it with no authentication.
-Latest version is on the badge above; `0.2.0` is current. In sbt:
+Latest version is on the badge above; `0.2.1` is current. In sbt:
 
 ```scala
-libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.2.0"
+libraryDependencies += "io.github.oluies" %% "p4rt-scala" % "0.2.1"
 ```
 
 In Mill (0.12+/1.x — `mvn`/`mvnDeps`, renamed from `ivy`/`ivyDeps`):
 
 ```scala
-def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.0")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.1")
 ```
 
 > **What a consumer needs.** TASTy is not forward compatible, so the compiler
 > that builds this library sets a floor for the ones that can read it. TASTy
 > versions track the Scala **minor** line, not the patch, so the floor is a
-> minor: `0.2.0` is built with Scala 3.9.0 and needs **3.9.x or newer**, while
-> `0.1.0` was built with 3.8.4 and reads on **3.8.x or newer** — including
-> 3.8.0, which the patch digit would wrongly seem to exclude. That floor moving
-> is why 0.1.0 → 0.2.0 is a minor bump and not a patch; this library tracks
-> Scala Next rather than the 3.3 LTS, so it moves again with each bump.
+> minor: `0.2.1` and `0.2.0` are built with Scala 3.9.0 and need **3.9.x or
+> newer**, while `0.1.0` was built with 3.8.4 and reads on **3.8.x or newer** —
+> including 3.8.0, which the patch digit would wrongly seem to exclude. That
+> floor moving is why 0.1.0 → 0.2.0 was a minor bump and 0.2.0 → 0.2.1 only a
+> patch; this library tracks Scala Next rather than the 3.3 LTS, so it moves
+> again with each bump.
 >
 > The **JDK** floor is lower and does not move with it: **JDK 17 or newer**.
 > The JDK a release is *cut* on (25, per `release.yml`) is not the JDK a
-> consumer needs. This is enforced rather than incidental — the build compiles
-> with `-release:17`, so a post-17 JDK API cannot slip into a published artifact
-> even though CI only ever runs on 25 and 26. Published `0.2.0` predates the
-> flag, but its class files are all version 61 and its sources use no post-17
-> API, so the floor holds for it too.
+> consumer needs. From `0.2.1` this is enforced rather than incidental — the
+> build compiles with `-release:17`, so a post-17 JDK API cannot slip into a
+> published artifact even though CI only ever runs on 25 and 26. `0.2.0` and
+> `0.1.0` predate the flag, but their class files are all version 61 and their
+> sources use no post-17 API, so the floor holds for them too.
 
 > **This is a fork.** It has been upgraded from the original OOPSLA artifact
 > (Scala 3.1.3 / sbt 1.7.1, which no longer builds on current JDKs) to
-> **Scala 3.9.0 / sbt 2.0.9 / JDK 25 (LTS baseline) or 26 — CI builds both**,
+> **Scala 3.9.0 / sbt 2.0.10 / JDK 25 (LTS baseline) or 26 — CI builds both**,
 > to serve as the control-plane binding
 > library for QuackMPP.
 >

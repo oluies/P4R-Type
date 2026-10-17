@@ -4,7 +4,7 @@ This fork of [JensKanstrupLarsen/P4R-Type](https://github.com/JensKanstrupLarsen
 (the OOPSLA artifact) is being brought up to date to serve as the control-plane
 binding library for **QuackMPP**.
 
-Verified cold (action cache cleared) on **sbt 2.0.9 / Scala 3.9.0**; CI builds
+Verified cold (action cache cleared) on **sbt 2.0.10 / Scala 3.9.0**; CI builds
 both **JDK 25 and 26**. `compile` and `testFull` green, 25/25 tests passing
 (2 bmv2 suites ignored without a live switch).
 
@@ -23,7 +23,7 @@ So the upgrade was not optional — there was no working baseline to regress aga
 
 | Component | Before | After |
 | --- | --- | --- |
-| sbt | 1.7.1 | **2.0.9** |
+| sbt | 1.7.1 | **2.0.10** |
 | Scala | 3.1.3 | **3.9.0** (Next track) |
 | JDK | unpinned (broken on 25/26) | **25 LTS or 26** (CI builds both) |
 | sbt-protoc | 1.0.3 *and* 1.0.2 (declared twice) | **1.1.0-RC2** |
@@ -132,7 +132,7 @@ Two artifacts, both forced purely by sbt 2 needing `_3` build-side jars:
 
 Re-checked on Maven at the time of writing: nothing newer exists on either
 (`sbt-protoc_sbt2_3` has only RC1/RC2; `compilerplugin_3` tops out at
-1.0.0-alpha.6). sbt is now 2.0.9 — bumped post-upgrade, and landed via Scala
+1.0.0-alpha.6). sbt is now 2.0.10 — bumped post-upgrade, and landed via Scala
 Steward's own gated PR, which is the setup working exactly as intended.
 
 ### Recommendation: stay on sbt 2.x
@@ -393,14 +393,14 @@ Rationale:
 
 > **Superseded, and this is the good outcome.** This whole section worked out how
 > QuackMPP would resolve a `publishLocal` snapshot from `~/.ivy2/local`. That is no
-> longer necessary: `0.2.0` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
+> longer necessary: `0.2.1` is on Maven Central (see [PUBLISHING.md](PUBLISHING.md)),
 > which coursier queries by default with no authentication and no local publish step
 > — so the consumer just adds the `mvnDeps` line at the end of this section. It also
 > removes what the local path forced on the consumer: a `.p4rt-version` marker file,
 > a build-from-source job, its cache and pin guard. The walkthrough below is kept
 > because the jar-contents audit and the resolver reasoning still apply, and
 > `publishLocal` is still how you test an unreleased snapshot — but it now writes
-> `0.2.1-SNAPSHOT`, not the `0.1.0-SNAPSHOT` recorded below.
+> `0.2.2-SNAPSHOT`, not the `0.1.0-SNAPSHOT` recorded below.
 
 `publishLocal` from `P4R-Type/`:
 
@@ -409,7 +409,7 @@ cd P4R-Type && sbt -batch publishLocal
 ```
 
 Verified at the time — this publishes to `~/.ivy2/local` (the fallback is now
-`0.2.1-SNAPSHOT`, so the coordinate reads `…;0.2.1-SNAPSHOT` today):
+`0.2.2-SNAPSHOT`, so the coordinate reads `…;0.2.2-SNAPSHOT` today):
 
 ```
 io.github.oluies#p4rt-scala_3;0.1.0-SNAPSHOT
@@ -444,7 +444,7 @@ Mill 1.x (current release 1.1.7) renamed `ivyDeps`/`ivy"..."` to `mvnDeps`/`mvn"
 so QuackMPP depends on it via:
 
 ```scala
-def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.0")
+def mvnDeps = Seq(mvn"io.github.oluies::p4rt-scala:0.2.1")
 ```
 
 On the resolver question: Mill resolves through coursier, and coursier's documented

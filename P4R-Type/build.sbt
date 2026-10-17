@@ -31,7 +31,7 @@ lazy val root = project
     // and the published version cannot disagree with the tag it came from.
     // Unset, the build stays a snapshot — which is what every non-release
     // build, including all of CI, sees.
-    version      := sys.env.getOrElse("RELEASE_VERSION", "0.2.1-SNAPSHOT"),
+    version      := sys.env.getOrElse("RELEASE_VERSION", "0.2.2-SNAPSHOT"),
     scalaVersion := scala3Version,
 
     // --- Maven Central (Central Portal) publishing metadata -----------------
@@ -41,7 +41,7 @@ lazy val root = project
     //
     // NOTE on mechanics: sbt-sonatype is deprecated and has no sbt 2 build, and
     // the `sonaUpload`/`localStaging` commands in the sbt 2.x Central recipe are
-    // not present in sbt 2.0.9 (the latest stable sbt). So the release path here is
+    // not present in sbt 2.0.10 (the latest stable sbt). So the release path here is
     // sbt-pgp `publishSigned` into `target/central-staging`, then a bundle upload
     // to the Central Portal — see PUBLISHING.md. This block is only the metadata;
     // it changes nothing about compile/test/CI.
