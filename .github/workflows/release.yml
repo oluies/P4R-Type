@@ -197,15 +197,24 @@ jobs:
 
             # Same principle for the checksums, which `test -s` above cannot
             # judge: a truncated or stale .md5/.sha1 is a plausible-looking file
-            # that Central rejects only after the upload. Maven checksum files
-            # are the bare hex digest with no filename, so compare digests
-            # directly.
+            # that Central rejects only after the upload.
+            #
+            # Both sides are normalized to the leading whitespace-delimited
+            # field, lowercased, rather than compared as an exact string. sbt
+            # writes bare lowercase hex today, but `digest  filename` (the
+            # coreutils form) and uppercase hex are both valid sidecars, and an
+            # exact comparison would hard-fail a bundle Central accepts. That is
+            # the same mistake as the `.asc.md5` demand recorded in
+            # PUBLISHING.md: a gate pinned to one producer's incidental output
+            # format, which cost a tag when the producer changed. Normalizing
+            # loses nothing — a truncated or wrong digest still mismatches.
             for algo in md5 sha1; do
               case $algo in
                 md5)  want=$(md5sum  "$f" | cut -d' ' -f1) ;;
                 sha1) want=$(sha1sum "$f" | cut -d' ' -f1) ;;
               esac
-              got=$(tr -d '[:space:]' < "$f.$algo")
+              want=$(printf '%s' "$want" | tr 'A-F' 'a-f')
+              got=$(tr -s '[:space:]' ' ' < "$f.$algo" | cut -d' ' -f1 | tr 'A-F' 'a-f')
               [ "$want" = "$got" ] || {
                 echo "::error::$algo mismatch for $f: file is $want, $f.$algo says $got"
                 exit 1
