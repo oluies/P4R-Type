@@ -5,9 +5,9 @@ with no authentication:
 
 ```scala
 // Mill 0.12+/1.x
-mvn"io.github.oluies::p4rt-scala:0.2.0"
+mvn"io.github.oluies::p4rt-scala:0.2.1"
 // Mill 0.11 and earlier
-ivy"io.github.oluies::p4rt-scala:0.2.0"
+ivy"io.github.oluies::p4rt-scala:0.2.1"
 ```
 
 Releases are cut by **CI, on a tag** — `.github/workflows/release.yml`. Nothing
@@ -18,8 +18,8 @@ disagree with the tag because it *is* the tag (`v0.1.0` → `RELEASE_VERSION=0.1
 consumed by `version` in `build.sbt`). Between releases `main` stays on the next
 `-SNAPSHOT`; no release ever edits a tracked file.
 
-**Released:** `0.2.0`, on 2026-10-01, from tag `v0.2.0`. Before that, `0.1.0` on
-2026-07-22 from `v0.1.0`.
+**Released:** `0.2.1`, on 2026-10-17, from tag `v0.2.1`. Before that, `0.2.0` on
+2026-10-01 and `0.1.0` on 2026-07-22.
 
 ## Why the setup is non-standard
 
@@ -31,8 +31,8 @@ build**, and the reasons are worth recording so nobody re-discovers them:
   publishes only `_2.12_1.0` (sbt 1), not `_sbt2_3`.
 * `sbt-ci-release` likewise has no sbt 2 build.
 * The sbt 2.x Central recipe uses native `sonaUpload` / `localStaging` commands,
-  but those are **not in sbt 2.0.9** — the latest *stable* sbt (2.1.0 is still at
-  milestone). Re-checked on 2.0.9: `help sonaUpload` finds nothing.
+  but those are **not in sbt 2.0.10** — the latest *stable* sbt (2.1.0 is still at
+  milestone). Re-checked on 2.0.10: `help sonaUpload` finds nothing.
 
 So the working path is: **sbt-pgp signs into a local staging tree, and the
 workflow uploads that tree as a bundle to the Central Portal Publisher API.**
@@ -103,11 +103,11 @@ upload.
 ### 2. Tag
 
 Set the version once so no command names a number that has already shipped
-(`0.1.0` and `0.2.0` are released and immutable — the next patch is `0.2.1`,
+(`0.1.0`, `0.2.0` and `0.2.1` are released and immutable — the next patch is `0.2.2`,
 and a change that moves the consumer Scala floor again is a minor, `0.3.0`):
 
 ```bash
-VERSION=0.2.1
+VERSION=0.2.2
 git tag "v$VERSION" && git push origin "v$VERSION"
 ```
 
@@ -135,7 +135,7 @@ Three kinds of literal version to move after a release; all are easy to leave
 behind, and a consumer reads the second kind:
 
 1. **The snapshot fallback** in `build.sbt` — move it to the next `-SNAPSHOT`
-   (`0.2.1-SNAPSHOT` now that `0.2.0` is out) so local and CI builds stop
+   (`0.2.2-SNAPSHOT` now that `0.2.1` is out) so local and CI builds stop
    claiming a number that is already published and immutable. The released
    version comes from the tag regardless, so this only affects non-release
    builds — but a snapshot sharing a number with a released artifact is exactly
@@ -220,7 +220,7 @@ guardrails the workflow gives you for free have to be written out by hand here.
 
 ```bash
 cd P4R-Type
-VERSION=0.2.1
+VERSION=0.2.2
 
 # sbt 2's server outlives the shell that started it and keeps the environment it
 # was born with, so a server already running in this project would stage the old
